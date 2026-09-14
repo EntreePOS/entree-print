@@ -141,7 +141,8 @@ test('returned libraries keep printer queries, new tickets and history on their 
   const { api, calls, state } = harness(t);
   const first = await api.connect();
   const second = await api.connect({ ip: 'second-host' });
-  state.hook = call => !call.body && call.url.pathname.startsWith('/api/jobs') ? json({ items: [], id: 'saved' }) : null;
+  state.hook = call => !call.body && call.url.pathname.startsWith('/api/jobs')
+    ? json({ items: [], id: 'saved', serviceId:call.url.hostname, html:'<p>Saved receipt</p>' }) : null;
   const start = calls.length;
   // Create the first library's target after the default connection has changed.
   await first.getPrinters({ refresh: true });

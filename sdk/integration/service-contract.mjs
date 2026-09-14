@@ -103,13 +103,15 @@ async function lostAck() {
   assert.equal(renderCalls, 1);
   assert.equal(jobWires.length, 4);
   assert.equal(new Set(jobWires).size, 1);
-  assert.equal((await api.getJobRender(recovered.id)).html, preview.html);
+  assert.equal((await api.getJobRender(recovered)).html, preview.html);
   const history = await api.getJobs(kitchen, { station: metadata.station, orderID: metadata.orderID });
   assert.equal(history.items.length, 1);
   assert.deepEqual(history.items[0].metadata, metadata);
   assert.equal((await api.getJob(recovered.id)).id, recovered.id);
+  assert.equal((await api.getJob(recovered)).id, recovered.id);
+  assert.equal((await api.getJob({serviceId:recovered.serviceId,idempotencyKey:recovered.idempotencyKey})).id,recovered.id);
   assert.equal((await control('inspect')).deliveries.length, 1);
-  const reprinted = await api.reprintJob(recovered.id, { idempotencyKey: 'operator-reprint' });
+  const reprinted = await api.reprintJob(recovered, { idempotencyKey: 'operator-reprint' });
   assert.equal(reprinted.reprintOf, recovered.id);
   await waitState('operator-reprint', 'completed');
   assert.equal((await api.reprintJob(recovered.id, { idempotencyKey: 'operator-reprint' })).id, reprinted.id);

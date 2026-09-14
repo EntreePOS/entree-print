@@ -667,6 +667,40 @@ export function createEntreePrint(options = {}, dependencies = {}) {
     }
   }
 
+  function jobOwner(reference, fallback) {
+    if (typeof reference === 'string') return { session: fallback, id: text(reference, 'job ID'), explicit: false };
+    if (!reference || typeof reference !== 'object' || Array.isArray(reference))
+      fail('REQUEST_INVALID', 'Pass a job ID or a job with id and serviceId.');
+    const id = text(reference.id, 'job ID');
+    const serviceId = text(reference.serviceId, 'serviceId', 128);
+    return { session: knownOwner(serviceId, fallback), id, explicit: true };
+  }
+
+  function knownOwner(serviceId, fallback) {
+    // Addresses and credentials come only from a successful connection, never job data.
+    const candidates = [...sessions].filter(session => !session.disabled && session.info?.serviceId === serviceId);
+    const owner = candidates.includes(fallback) ? fallback
+      : candidates.reduce((latest, session) => !latest || session.handshakeOrder > latest.handshakeOrder ? session : latest, null);
+    if (!owner) fail('JOB_OWNER_REQUIRED', 'Connect to the recorded job owner before recovering this job.',
+      { delivery: 'unknown', details: { serviceId } });
+    return owner;
+  }
+
+  function jobRead(session, id, path, rendered = false, renderId) {
+    return session.read(path).then(result => {
+      if (result?.serviceId !== session.identity || (rendered
+        ? typeof result.html !== 'string' || typeof result.id !== 'string' || !result.id || renderId !== undefined && result.id !== renderId
+        : result.id !== id))
+        fail('RESPONSE_INVALID', 'The response does not identify the recorded job owner.', { delivery: 'unknown' });
+      return result;
+    }).catch(error => {
+      // A failed read or missing job does not prove that an earlier ticket was never accepted.
+      error.delivery = 'unknown';
+      error.details = { ...error.details, serviceId: session.identity, jobId: id, operation: rendered ? 'render_lookup' : 'lookup' };
+      throw error;
+    });
+  }
+
   function printingOperations(getSession) { return {
     target(name) { return new PrinterTarget(getSession(), name); },
     getPrinters(options = {}) { fields(options, ['refresh']); return getSession().read(`/api/printers?refresh=${options.refresh === true}`); },
@@ -697,29 +731,40 @@ export function createEntreePrint(options = {}, dependencies = {}) {
     },
     async reprintJob(id, options = {}) {
       fields(options, ['idempotencyKey']);
-      const original = text(id, 'job ID');
       const key = text(options.idempotencyKey, 'idempotencyKey');
-      const session = getSession();
+      const resolved = jobOwner(id, getSession());
+      const original = resolved.id;
+      // An explicit job reference authorizes this named owner, including a node
+      // originally selected as a backup. It never selects a different owner.
+      const session = resolved.explicit ? sessionFor(resolved.session.config, resolved.session.identity) : resolved.session;
       return session.submit(await encode({ idempotencyKey: key }), key, `/api/jobs/${encodeURIComponent(original)}/reprints`, original);
     },
     getJob(id) {
       const session = getSession();
-      if (typeof id === 'string') return session.read(`/api/jobs/${encodeURIComponent(text(id, 'job ID'))}`);
-      fields(id, ['idempotencyKey']);
+      if (typeof id === 'string' || id && Object.hasOwn(id, 'id')) {
+        const owner = jobOwner(id, session);
+        return jobRead(owner.session, owner.id, `/api/jobs/${encodeURIComponent(owner.id)}`);
+      }
+      fields(id, ['idempotencyKey', 'serviceId']);
       const key = text(id.idempotencyKey, 'idempotencyKey');
       if (!key.trim()) fail('REQUEST_INVALID', 'idempotencyKey cannot be blank.');
-      return session.read(`/api/jobs/lookup?${new URLSearchParams({ idempotencyKey: key })}`).then(result => {
-        if (result?.serviceId !== session.identity || result.idempotencyKey !== key || typeof result.id !== 'string' || !result.id)
+      const owner = id.serviceId === undefined ? session : knownOwner(text(id.serviceId, 'serviceId', 128), session);
+      return owner.read(`/api/jobs/lookup?${new URLSearchParams({ idempotencyKey: key })}`).then(result => {
+        if (result?.serviceId !== owner.identity || result.idempotencyKey !== key || typeof result.id !== 'string' || !result.id)
           fail('RESPONSE_INVALID', 'The lookup response does not identify this service and print intent.', { delivery: 'unknown' });
         return result;
       }).catch(error => {
         // A lookup failure, including not-found, is not proof about an earlier submission's delivery.
         error.delivery = 'unknown';
-        error.details = { ...error.details, serviceId: session.identity, idempotencyKey: key, operation: 'lookup' };
+        error.details = { ...error.details, serviceId: owner.identity, idempotencyKey: key, operation: 'lookup' };
         throw error;
       });
     },
-    getJobRender(id) { return getSession().read(`/api/jobs/${encodeURIComponent(text(id, 'job ID'))}/render`); }
+    getJobRender(id) {
+      const owner = jobOwner(id, getSession());
+      const renderId = typeof id === 'object' && id.renderId != null ? text(id.renderId, 'render ID') : undefined;
+      return jobRead(owner.session, owner.id, `/api/jobs/${encodeURIComponent(owner.id)}/render`, true, renderId);
+    }
   }; }
 
   function connectedLibrary(session) {

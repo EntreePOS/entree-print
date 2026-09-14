@@ -27,3 +27,5 @@ The integrated status lookup exposed a path-encoding bug for `/` in queue names.
 The lost-acknowledgement scenario also sends a later request with an invalid token to the actual authorization handler after ledger reopen. Its rejection remains `delivery: 'unknown'` in the SDK because the earlier accepted receipt still exists. Restoring authorization recovers that same completed job with identical bytes and one backend delivery. Native SQLite recovery separately reopens through a lost ACK, a later rejection and concurrent final recovery without erasing uncertainty.
 
 This verifies SDK/service interoperability under simulated transport faults. It does not establish live HTTP/TLS, Wi-Fi, discovery, spooler or hardware behavior. The separate Node unit suite remains `node --test sdk/test/*.test.mjs`.
+
+The lost-ACK scenario also recovers status and the retained preview using the returned job object, looks up its persisted owner/key, and explicitly reprints by job reference against the actual API. This exercises the owner-aware overloads and response validation with the retained ledger; cross-node routing remains covered only by the separate controlled SDK cases.

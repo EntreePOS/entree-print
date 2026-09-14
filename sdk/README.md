@@ -196,6 +196,23 @@ const job = await print.getJob({ idempotencyKey: savedIntent.id });
 
 This is a read-only lookup. It neither renders nor submits a receipt and remains available after the accepted layout expires. Keys are exact and case-sensitive, with 1–200 characters and no all-whitespace value. Lookup errors, including `JOB_NOT_FOUND`, carry `delivery: 'unknown'`: an earlier request may still be in flight. A missing result is not permission to generate another key or send to a different server. This recovers accepted work; it does not store or deliver a POS request that never reached the plugin.
 
+## Recovering jobs after selecting another server
+
+Pass the saved job object to `getJob`, `getJobRender` or `reprintJob`. The SDK uses its `serviceId` to reach a previously connected owner, even when the current library points elsewhere. A minimal `{ id, serviceId }` reference also works; retain `renderId` to validate that a preview response identifies the original rendering. Other job fields cannot supply an address or credential.
+
+```javascript
+const currentJob = await print.getJob(savedJob);
+const savedPreview = await print.getJobRender(savedJob);
+// Only after the operator explicitly requests another copy:
+const copy = await print.reprintJob(savedJob, {
+  idempotencyKey: savedReprintIntent.id
+});
+```
+
+For a lost job ID, `getJob({ serviceId, idempotencyKey })` uses the same owner lookup. Bare string IDs and key selectors without `serviceId` remain bound to the library on which they are called. Explicit references use that library when it is the owner, otherwise the most recently verified connection to that owner. The SDK never obtains an endpoint or token from job metadata. If the owner has not been connected in this SDK lifetime, `JOB_OWNER_REQUIRED` asks the caller to connect it; no backup is queried as a substitute. Disconnect clears this automatic lookup until the owner is connected again.
+
+An offline owner, missing job or invalid response keeps `delivery: 'unknown'`. Job reads validate the returned owner and job ID; preview reads validate the owner and, when supplied, the original render ID. An explicit job reference permits a reprint on its recorded owner even if that node was initially selected as a backup. It does not transfer the original job or authorize another destination. This owner resolution is separate from unfinished automatic routing of new receipts and shared claims across clients.
+
 ## Durable client outbox
 
 `EntreePrint.outbox()` returns a shared controller for that SDK instance. In browser/Electron renderer contexts it uses IndexedDB and Web Locks. It does not contact a printer or service until `flush(print)` is called. Save the owning service identity in your application's connection settings after its first successful connection.

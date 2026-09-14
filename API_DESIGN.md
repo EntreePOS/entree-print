@@ -74,9 +74,9 @@ Configuration/builders are synchronous. I/O methods return promises. No method s
 | `EntreePrint` | `disconnect()` | Stops SDK heartbeat, discovery/reconnect work and subscriptions; does not cancel accepted print jobs |
 | `EntreePrint` | `getPrinters({ refresh? } = {})` | `Promise<PrinterInfo[]>` |
 | `EntreePrint` | `getJobs(printerName?, filters = {})` | `Promise<{ items: Job[], nextCursor: string \| null }>` |
-| `EntreePrint` / connected library | `getJob(id)` or `getJob({ idempotencyKey })` | `Promise<Job>`; retrieve an accepted job by server ID or the POS's persisted intent key |
-| `EntreePrint` | `getJobRender(id)` | `Promise<RenderedTicket>` for that job's retained artifact |
-| `EntreePrint` | `reprintJob(id, { idempotencyKey })` | `Promise<Job>`; new job on the same destination, linked by `reprintOf` |
+| `EntreePrint` / connected library | `getJob(idOrJob)` or `getJob({ idempotencyKey, serviceId? })` | `Promise<Job>`; retrieve an accepted job by server ID or the POS's persisted intent key |
+| `EntreePrint` | `getJobRender(idOrJob)` | `Promise<RenderedTicket>` for that job's retained artifact |
+| `EntreePrint` | `reprintJob(idOrJob, { idempotencyKey })` | `Promise<Job>`; new job on the same destination, linked by `reprintOf` |
 | `EntreePrint` | `subscribe(handler, { events? } = {})` | Subscription with `close()`; connection, printer and job changes |
 | `EntreePrint` | `target(printerName)` | Independent `PrinterTarget`, no I/O |
 | Printer target | `status({ refresh? } = {})` | `Promise<PrinterStatus>` |
@@ -323,11 +323,11 @@ const recent = await EntreePrint.getJobs("kitchen", {
   limit: 30
 });
 
-const current = await EntreePrint.getJob(job.id);
-const oldPreview = await EntreePrint.getJobRender(job.id);
+const current = await EntreePrint.getJob(job);
+const oldPreview = await EntreePrint.getJobRender(job);
 
 // Only for an intentional additional copy; persist a new action key.
-const copy = await EntreePrint.reprintJob(job.id, {
+const copy = await EntreePrint.reprintJob(job, {
   idempotencyKey: reprintAction.id
 });
 ```
@@ -367,6 +367,8 @@ Job contract:
 The service publishes its retention policy through the connection and expiry timestamps on jobs. Default receipt retention is seven days after completion, configurable from 1–365 days through `ReceiptRetentionDays`. Pending and delivery-uncertain jobs cannot be silently evicted. Finished layouts are compacted by a bounded background worker; job history, command identity, content hash and the original request digest remain. The exact original bytes remain replayable for the lifetime of the retained ledger, including after receipt expiry. A different request for a compacted key receives `IDEMPOTENCY_CONFLICT`; requesting its preview or a new reprint receives `ARTIFACT_EXPIRED`.
 
 The ledger admits at most 100,000 intent records, 10,000 prepared receipts and 512 MB of serialized records before new acceptance is refused. Existing status writes can grow beyond that admission budget. Intent records have no automatic expiry: when capacity is reached, reject new work with `QUEUE_FULL` while preserving existing jobs and retries. This deliberately avoids forgetting old opaque keys and mistaking their delayed retries for new work. Automatic history export/removal is not implemented; a future bounded replay-expiration scheme must explicitly reject old intents before deleting their tombstones.
+
+The SDK accepts returned jobs or `{ id, serviceId }` references for status, retained preview and explicit reprint, resolving a previously connected original owner independently of the selected server. Include `renderId` to verify the retained rendering identity. Key lookup also accepts `{ serviceId, idempotencyKey }`. Bare IDs stay library-bound. Unknown owners require an explicit connection; job data never supplies credentials or endpoints. Lookup failures remain uncertain and never authorize routing to a different node. These methods preserve ownership but do not implement automatic failover for new print submissions.
 
 Metadata maps existing `getPrintMeta()` fields; keep `orderID` spelling for migration. It is searchable context, not instructions to interpret the order. Full HTML belongs in retained artifacts, not list results, event payloads or routine logs. Command jobs have no render and return `RENDER_NOT_AVAILABLE` for render lookup. `reprintJob()` accepts print jobs only; repeating a drawer/raw command requires a new explicit command action.
 
