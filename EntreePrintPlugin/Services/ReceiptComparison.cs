@@ -9,6 +9,15 @@ namespace EntreePrintPlugin.Services;
 // Comparison evidence only: this does not transfer artifacts or authorize a job.
 internal static class ReceiptComparison
 {
+    internal static void Validate(string? expected, ReceiptTextLayout layout, string driverName,
+        PrinterLayoutSettings driver, CancellationToken token, Func<ReceiptTextRun, string?>? readFont = null)
+    {
+        if (expected is null) return;
+        var current = Create(layout, driverName, driver, token, readFont);
+        if (current is null || !StringComparer.Ordinal.Equals(current, expected))
+            throw new CommandException("RENDER_CHANGED", "The prepared receipt's fonts or driver layout changed or cannot be verified. Prepare and review a new receipt.");
+    }
+
     internal static string? Create(ReceiptTextLayout layout, string driverName, PrinterLayoutSettings driver,
         CancellationToken token, Func<ReceiptTextRun, string?>? readFont = null)
     {

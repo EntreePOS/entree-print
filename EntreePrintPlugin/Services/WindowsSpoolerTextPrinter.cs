@@ -9,7 +9,17 @@ namespace EntreePrintPlugin.Services;
 public sealed class WindowsSpoolerTextPrinter
 {
     public uint Print(string printerName, ReceiptTextLayout layout, string documentName,
-        Action<uint>? onJobCreated = null, string? outputFile = null, int? expectedDpi = null)
+        Action<uint>? onJobCreated = null, string? outputFile = null, int? expectedDpi = null,
+        string? expectedComparisonId = null, CancellationToken cancellationToken = default)
+        => PrintCore(printerName, layout, documentName, onJobCreated, outputFile, expectedDpi, expectedComparisonId, cancellationToken, false);
+
+    // Read-only diagnostics exercise the same context and validation, stopping before StartDoc.
+    internal void ValidateCurrentPrinter(string printerName, ReceiptTextLayout layout, int? expectedDpi, string? expectedComparisonId)
+        => PrintCore(printerName, layout, "", null, null, expectedDpi, expectedComparisonId, default, true);
+
+    private static uint PrintCore(string printerName, ReceiptTextLayout layout, string documentName,
+        Action<uint>? onJobCreated, string? outputFile, int? expectedDpi,
+        string? expectedComparisonId, CancellationToken cancellationToken, bool validateOnly)
     {
         WindowsTextPrinter.Validate(layout);
         // The preview froze font family choices. Do not silently substitute a different family on replay.
@@ -33,14 +43,13 @@ public sealed class WindowsSpoolerTextPrinter
         var documentStarted = false;
         try
         {
-            var dpiX = GetDeviceCaps(dc, 88);
-            var dpiY = GetDeviceCaps(dc, 90);
-            if (expectedDpi.HasValue && (dpiX != expectedDpi || dpiY != expectedDpi))
-                throw new CommandException("PRINTER_SETTINGS_CHANGED", "Windows printer resolution changed after this receipt was prepared.");
-            if (dpiX <= 0 || dpiY <= 0)
-                throw new CommandException("PRINTER_SETTINGS_UNAVAILABLE", "The Windows driver did not report a usable resolution.");
+            var driver = new PrinterLayoutSettings(GetDeviceCaps(dc, 8), GetDeviceCaps(dc, 10), GetDeviceCaps(dc, 88), GetDeviceCaps(dc, 90),
+                GetDeviceCaps(dc, 110), GetDeviceCaps(dc, 111), GetDeviceCaps(dc, 112), GetDeviceCaps(dc, 113));
             // Plan every page before StartDoc: invalid/oversize sections cannot leave partial output.
-            var pages = ReceiptPaginator.Paginate(layout, GetDeviceCaps(dc, 8) * 96f / dpiX, GetDeviceCaps(dc, 10) * 96f / dpiY, dpiY);
+            // Use this drawing context's measurements, not the settings cached at acceptance.
+            var driverName = expectedComparisonId is null ? "" : WindowsPrinterLayout.ReadDriverName(printerName);
+            var pages = PreparePages(layout, driverName, driver, expectedDpi, expectedComparisonId, cancellationToken);
+            if (validateOnly) return 0;
             var info = new DocInfo { Size = Marshal.SizeOf<DocInfo>(), Name = documentName, Output = outputFile };
             var id = StartDoc(dc, info);
             if (id <= 0) throw new PrintNotSubmittedException("Windows rejected the print document before submission.");
@@ -63,11 +72,30 @@ public sealed class WindowsSpoolerTextPrinter
             documentStarted = false;
             return (uint)id;
         }
+        catch (OperationCanceledException) when (!documentStarted)
+        {
+            throw new PrintNotSubmittedException("Service stopped before Windows submission.");
+        }
         finally
         {
             if (documentStarted) AbortDoc(dc);
             DeleteDC(dc);
         }
+    }
+
+    internal static IReadOnlyList<ReceiptTextLayout> PreparePages(ReceiptTextLayout layout, string driverName,
+        PrinterLayoutSettings driver, int? expectedDpi, string? expectedComparisonId, CancellationToken token)
+    {
+        token.ThrowIfCancellationRequested();
+        if (expectedDpi.HasValue && (driver.DpiX != expectedDpi || driver.DpiY != expectedDpi))
+            throw new CommandException("PRINTER_SETTINGS_CHANGED", "Windows printer resolution changed after this receipt was prepared.");
+        if (driver.DpiX <= 0 || driver.DpiY <= 0)
+            throw new CommandException("PRINTER_SETTINGS_UNAVAILABLE", "The Windows driver did not report a usable resolution.");
+        ReceiptComparison.Validate(expectedComparisonId, layout, driverName, driver, token);
+        var pages = ReceiptPaginator.Paginate(layout, driver.PrintableWidthDots * 96f / driver.DpiX,
+            driver.PrintableHeightDots * 96f / driver.DpiY, driver.DpiY);
+        token.ThrowIfCancellationRequested();
+        return pages;
     }
 
     private static void Check(int value, string step)

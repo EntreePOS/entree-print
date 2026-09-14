@@ -382,6 +382,67 @@ test('disconnect before a later retry preserves the ticket original uncertainty'
   await assert.rejects(ticket.print({ idempotencyKey: 'retained' }), { code: 'NOT_CONNECTED', delivery: 'unknown' });
 });
 
+for (const code of ['RENDER_EXPIRED', 'RENDER_CHANGED', 'PRINTER_SETTINGS_CHANGED']) test(`${code} requires a fresh explicit preview before printing again`, async t => {
+  const { api, state, calls } = harness(t, { retryCount: 0 });
+  const ticket = api.target('Kitchen').setContent('<p>Receipt</p>');
+  const original = await ticket.render();
+  state.hook = call => call.url.pathname === '/api/jobs' ? rejected(code) : null;
+  await assert.rejects(ticket.print({ idempotencyKey: 'intent' }), { code, delivery: 'not_sent' });
+  const requestCount = calls.length;
+  await assert.rejects(ticket.print({ idempotencyKey: 'intent' }), { code });
+  await assert.rejects(ticket.print({ idempotencyKey: 'other-key' }), { code });
+  assert.equal(calls.length, requestCount); // No automatic re-render or repeat submission.
+  state.hook = call => call.url.pathname === '/api/renders' ? rejected('RENDER_BUSY') : null;
+  await assert.rejects(ticket.render(), { code: 'RENDER_BUSY' });
+  await assert.rejects(ticket.print({ idempotencyKey: 'intent' }), { code });
+  state.hook = null;
+  const [first, second] = await Promise.all([ticket.render(), ticket.render()]);
+  assert.notEqual(first.id, original.id); assert.equal(first.id, second.id);
+  await ticket.print({ idempotencyKey: 'intent' });
+  assert.deepEqual(calls.filter(call => call.body?.type === 'print').map(call => call.body.renderId), [original.id, first.id]);
+});
+
+for (const code of ['RENDER_CHANGED', 'PRINTER_SETTINGS_CHANGED']) test(`${code} cannot replace an earlier uncertain request`, async t => {
+  const { api, state, calls } = harness(t, { retryCount: 0 });
+  const ticket = api.target('Kitchen').setContent('<p>Receipt</p>');
+  state.hook = call => { if (call.url.pathname === '/api/jobs') throw new TypeError('ACK lost'); };
+  await assert.rejects(ticket.print({ idempotencyKey: 'intent' }), { delivery: 'unknown' });
+  state.hook = call => call.url.pathname === '/api/jobs' ? rejected(code) : null;
+  await assert.rejects(ticket.print({ idempotencyKey: 'intent' }), { code, delivery: 'unknown' });
+  await ticket.render();
+  await assert.rejects(ticket.print({ idempotencyKey: 'intent' }), { code, delivery: 'unknown' });
+  const writes = calls.filter(call => call.body?.type === 'print');
+  assert.equal(writes.length, 3); assert.ok(writes.every(call => digest(call.init.body) === digest(writes[0].init.body)));
+  assert.equal(calls.filter(call => call.url.pathname === '/api/renders').length, 1);
+});
+
+test('a render started before rejection cannot clear the fresh-review requirement', async t => {
+  const { api, state, calls, clock } = harness(t, { retryCount: 0 });
+  const ticket = api.target('Kitchen').setContent('<p>Receipt</p>');
+  const original = await ticket.render();
+  let rejectPrint, finishRender;
+  state.hook = call => {
+    if (call.url.pathname === '/api/jobs') return new Promise(resolve => { rejectPrint = () => resolve(rejected('RENDER_CHANGED')); });
+    if (call.url.pathname === '/api/renders') return new Promise(resolve => { finishRender = () => resolve(json({ ...original, id:'late-render',
+      expiresAt:new Date(clock.now + 10000).toISOString() }, 200, { 'X-Entree-Content-SHA256':digest(call.init.body) })); });
+  };
+  const sending = ticket.print({ idempotencyKey:'intent' });
+  const rejection = assert.rejects(sending, { code:'RENDER_CHANGED', delivery:'not_sent' });
+  while (!rejectPrint) await new Promise(resolve => setImmediate(resolve));
+  clock.now += 10001;
+  const outdatedReview = ticket.render();
+  while (!finishRender) await new Promise(resolve => setImmediate(resolve));
+  rejectPrint(); await rejection;
+  finishRender(); assert.equal((await outdatedReview).id,'late-render');
+  const count = calls.length;
+  await assert.rejects(ticket.print({idempotencyKey:'intent'}), {code:'RENDER_CHANGED'});
+  assert.equal(calls.length,count);
+  state.hook = null;
+  const reviewed = await ticket.render();
+  assert.notEqual(reviewed.id,'late-render');
+  await ticket.print({idempotencyKey:'intent'});
+});
+
 test('expired reviewed preview is sent unchanged; print never silently prepares a different layout', async t => {
   const { api, state, clock, calls } = harness(t);
   const ticket = api.target('Kitchen').setContent('<p>Receipt</p>').setWidth(72);

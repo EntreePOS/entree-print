@@ -14,13 +14,13 @@ public sealed class WindowsPrinterBackend(RawPrinterWriter rawPrinter, JobStore 
             throw new CommandException("PRINTER_REQUIRED", "Select an installed Windows printer queue.");
         return Task.FromResult(command.Type switch
         {
-            "print" => PrintReceipt(command),
+            "print" => PrintReceipt(command, cancellationToken),
             "beep" or "open_cash_drawer" or "cut" or "send_command" => SendRawCommand(command),
             _ => throw new CommandException("TYPE_INVALID", $"Unsupported command type: {command.Type}")
         });
     }
 
-    private PrintExecutionResult PrintReceipt(AcceptedCommand command)
+    private PrintExecutionResult PrintReceipt(AcceptedCommand command, CancellationToken cancellationToken)
     {
         var receipt = command.Prepared ?? throw new CommandException("RENDER_REQUIRED", "Prepare a receipt before submitting it to Windows.");
         if (!command.Printer.Equals(receipt.Printer, StringComparison.OrdinalIgnoreCase))
@@ -32,7 +32,8 @@ public sealed class WindowsPrinterBackend(RawPrinterWriter rawPrinter, JobStore 
         try
         {
             jobId = new WindowsSpoolerTextPrinter().Print(command.Printer, receipt.Layout, document,
-                id => jobs.RecordSpoolerJob(command.Id, id, document), expectedDpi: receipt.Dpi);
+                id => jobs.RecordSpoolerJob(command.Id, id, document), expectedDpi: receipt.Dpi,
+                expectedComparisonId: receipt.ComparisonId, cancellationToken: cancellationToken);
         }
         catch (Exception error) when (error is PrintNotSubmittedException or CommandException)
         {

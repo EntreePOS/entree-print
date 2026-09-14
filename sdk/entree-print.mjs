@@ -574,16 +574,20 @@ export function createEntreePrint(options = {}, dependencies = {}) {
   }
 
   class Ticket {
-    #session; #printer; #content; #width; #rendering = null; #defaultKey = null; #intents = new Map();
+    #session; #printer; #content; #width; #rendering = null; #defaultKey = null; #intents = new Map(); #reviewError = null;
     constructor(session, printer, value, width) { this.#session = session; this.#printer = printer; this.#content = value; this.#width = width; }
     setContent(value) { return new Ticket(this.#session, this.#printer, content(value), this.#width); }
     setWidth(mm) { return new Ticket(this.#session, this.#printer, this.#content, number(mm, 'width', 20, 100)); }
     async render() {
+      const reviewError = this.#reviewError;
       await this.#session.ready();
       if (this.#rendering) {
         const original = this.#rendering;
         const cached = await original;
-        if (Date.parse(cached.expiresAt) > io.now()) return snapshot(cached);
+        if (Date.parse(cached.expiresAt) > io.now()) {
+          if (this.#reviewError === reviewError) this.#reviewError = null;
+          return snapshot(cached);
+        }
         if (this.#rendering === original) this.#rendering = null; // Explicit render() requests a fresh preview.
       }
       if (!this.#rendering) {
@@ -598,7 +602,9 @@ export function createEntreePrint(options = {}, dependencies = {}) {
         this.#rendering = pending;
         pending.catch(() => { if (this.#rendering === pending) this.#rendering = null; });
       }
-      return snapshot(await this.#rendering);
+      const rendered = await this.#rendering;
+      if (this.#reviewError === reviewError) this.#reviewError = null;
+      return snapshot(rendered);
     }
     async print(options = {}) {
       const supplied = printOptions(options, true);
@@ -608,6 +614,7 @@ export function createEntreePrint(options = {}, dependencies = {}) {
       let intent = this.#intents.get(key);
       if (intent && intent.signature !== signature) fail('IDEMPOTENCY_CONFLICT', 'This ticket already uses the key with different metadata or trailing actions.');
       if (!intent) {
+        if (this.#reviewError) fail(this.#reviewError.code, 'Prepare and review a fresh preview with render() before printing this ticket.');
         verifyBackupDestination(this.#session, this.#printer, !!supplied.after);
         // Capture the preparation promise and bytes once. Later render() calls cannot change a retry.
         const rendering = this.#rendering ?? this.render();
@@ -620,10 +627,14 @@ export function createEntreePrint(options = {}, dependencies = {}) {
       if (!intent.inFlight) {
         const captured = intent;
         const pending = intent.wire.then(wire => this.#session.submit(wire, key, '/api/jobs', undefined, captured.evidence)).catch(error => {
-          // Only this authoritative rejection allows the operator to prepare a new preview for the same intent.
+          // An authoritative preview rejection requires explicit preparation/review before new work.
           // An unknown ACK/transport outcome always retains the original wire bytes.
-          if (error.code === 'RENDER_EXPIRED' && error.delivery === 'not_sent' && this.#intents.get(key) === captured)
+          if (['RENDER_EXPIRED', 'RENDER_CHANGED', 'PRINTER_SETTINGS_CHANGED'].includes(error.code)
+            && error.delivery === 'not_sent' && this.#intents.get(key) === captured) {
             this.#intents.delete(key);
+            this.#rendering = null;
+            this.#reviewError = error;
+          }
           throw error;
         });
         intent.inFlight = pending;

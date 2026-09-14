@@ -49,5 +49,52 @@ public sealed class WindowsPrinterLayout : IPrinterLayoutSettings
         finally { graphics.ReleaseHdc(dc); }
     }
 
+    internal static string ReadDriverName(string printerName)
+    {
+        if (!OpenPrinter(printerName, out var printer, IntPtr.Zero))
+            throw new CommandException("PRINTER_SETTINGS_UNAVAILABLE", "Windows could not read the selected printer's driver.");
+        try
+        {
+            GetPrinter(printer, 2, IntPtr.Zero, 0, out var needed);
+            if (needed < IntPtr.Size * 5 || needed > 1_000_000)
+                throw new CommandException("PRINTER_SETTINGS_UNAVAILABLE", "Windows returned invalid printer settings.");
+            var buffer = Marshal.AllocHGlobal((int)needed);
+            try
+            {
+                if (!GetPrinter(printer, 2, buffer, needed, out var written) || written > needed)
+                    throw new CommandException("PRINTER_SETTINGS_UNAVAILABLE", "Windows printer settings could not be read consistently.");
+                return ParseDriverName(buffer, (int)written);
+            }
+            finally { Marshal.FreeHGlobal(buffer); }
+        }
+        finally { ClosePrinter(printer); }
+    }
+
+    internal static string ParseDriverName(IntPtr buffer, int size)
+    {
+        // PRINTER_INFO_2 begins with five pointers; the fifth is pDriverName.
+        // Bound the pointer and terminator to the returned buffer before reading.
+        if (size < IntPtr.Size * 5) throw InvalidDriverName();
+        var pointer = Marshal.ReadIntPtr(buffer, IntPtr.Size * 4);
+        var offset = pointer.ToInt64() - buffer.ToInt64();
+        if (offset < IntPtr.Size * 5 || offset > size - 2 || offset % 2 != 0) throw InvalidDriverName();
+        var available = Math.Min(1025, (size - (int)offset) / 2);
+        for (var length = 0; length < available; length++)
+            if (Marshal.ReadInt16(pointer, length * 2) == 0)
+            {
+                var name = Marshal.PtrToStringUni(pointer, length);
+                return !string.IsNullOrWhiteSpace(name) ? name : throw InvalidDriverName();
+            }
+        throw InvalidDriverName();
+    }
+
+    private static CommandException InvalidDriverName() => new("PRINTER_SETTINGS_UNAVAILABLE", "Windows returned an invalid printer driver name.");
+
+    [DllImport("winspool.drv", EntryPoint = "OpenPrinterW", CharSet = CharSet.Unicode, SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)] private static extern bool OpenPrinter(string name, out IntPtr printer, IntPtr defaults);
+    [DllImport("winspool.drv", EntryPoint = "GetPrinterW", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)] private static extern bool GetPrinter(IntPtr printer, uint level, IntPtr buffer, uint size, out uint needed);
+    [DllImport("winspool.drv")]
+    [return: MarshalAs(UnmanagedType.Bool)] private static extern bool ClosePrinter(IntPtr printer);
     [DllImport("gdi32.dll")] private static extern int GetDeviceCaps(IntPtr dc, int index);
 }

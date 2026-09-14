@@ -209,8 +209,13 @@ public sealed class V2ApiService(PluginSettings settings, ServiceIdentity identi
                     "cut" when profile?.CutMode == "raw" => profile?.CutCommandHex,
                     _ => null
                 } ?? throw new CommandException("COMMAND_UNSUPPORTED", "A trailing action requires verified device bytes; driver-managed cutting cannot also request a raw cut.")))).ToArray();
-            if (receipt is not null && receipt.ProfileVersion != LayoutVersion(printer, await driverSettings.ReadAsync(name, token)))
-                throw new CommandException("PRINTER_SETTINGS_CHANGED", "Windows printer settings changed since preview; prepare the receipt again.");
+            if (receipt is not null)
+            {
+                var currentLayout = await driverSettings.ReadAsync(name, token);
+                if (receipt.ProfileVersion != LayoutVersion(printer, currentLayout))
+                    throw new CommandException("PRINTER_SETTINGS_CHANGED", "Windows printer settings changed since preview; prepare the receipt again.");
+                ReceiptComparison.Validate(receipt.ComparisonId, receipt.Layout, printer.DriverName, currentLayout, token);
+            }
             if (type != "print")
             {
                 if (type == "send_command" && profile?.AllowRawCommands != true)
@@ -294,8 +299,10 @@ public sealed class V2ApiService(PluginSettings settings, ServiceIdentity identi
         }
         var original = jobs.ReprintSource(originalId);
         var printer = await FindPrinterAsync(original.Printer, token);
-        if (original.Prepared!.ProfileVersion != LayoutVersion(printer, await driverSettings.ReadAsync(printer.Name, token)))
+        var currentLayout = await driverSettings.ReadAsync(printer.Name, token);
+        if (original.Prepared!.ProfileVersion != LayoutVersion(printer, currentLayout))
             throw new CommandException("PRINTER_SETTINGS_CHANGED", "Windows printer settings changed. Prepare and review a new receipt before printing with those settings.");
+        ReceiptComparison.Validate(original.Prepared.ComparisonId, original.Prepared.Layout, printer.DriverName, currentLayout, token);
         var accepted = processor.AcceptValidated(original with { Id = id, IdempotencyKey = key, RequestDigest = request.Digest, ReprintOf = originalId });
         return (JobView(accepted.Job), accepted.Created);
     }

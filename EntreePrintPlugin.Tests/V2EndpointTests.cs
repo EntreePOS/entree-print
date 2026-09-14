@@ -152,6 +152,51 @@ public sealed class V2EndpointTests
     }
 
     [Fact]
+    public async Task ChangedComparisonRejectsNewPrintAndReprintBeforeAcceptance()
+    {
+        await using var host = await Harness.Start();
+        var renders = new PreparedReceiptStore(Path.Combine(host.DirectoryPath, "renders"), host.Identity, host.Clock);
+        host.Preview = renders.Save("Kitchen", 72, host.Preview.ProfileVersion, host.Preview.Layout, 203,
+            "layout:" + new string('a', 64));
+        using var request = host.Request(host.PrintBody("new-intent"));
+        var rejected = await host.Client.SendAsync(request);
+        Assert.Equal(HttpStatusCode.Conflict, rejected.StatusCode);
+        using var rejection = JsonDocument.Parse(await rejected.Content.ReadAsStringAsync());
+        var error = rejection.RootElement.GetProperty("error");
+        Assert.Equal("RENDER_CHANGED", error.GetProperty("code").GetString());
+        Assert.Equal("not_sent", error.GetProperty("delivery").GetString());
+        Assert.False(error.GetProperty("retryable").GetBoolean());
+        Assert.Empty(host.Jobs.List());
+        host.Seed("original", "completed"); // A retained artifact from a former font/build environment.
+        Assert.Equal("RENDER_CHANGED", await Code(await host.Client.SendAsync(host.Reprint("original", "new-copy"))));
+        Assert.Single(host.Jobs.List());
+        Assert.Equal(0, host.Backend.Calls);
+    }
+
+    [Fact]
+    public async Task AcceptedReplayDoesNotRevalidateAnOldComparisonAfterRestart()
+    {
+        await using var host = await Harness.Start();
+        var renders = new PreparedReceiptStore(Path.Combine(host.DirectoryPath, "renders"), host.Identity, host.Clock);
+        host.Preview = renders.Save("Kitchen", 72, host.Preview.ProfileVersion, host.Preview.Layout, 203,
+            "layout:" + new string('a', 64));
+        var body = host.PrintBody("accepted-intent");
+        var id = V2ApiService.JobId("accepted-intent");
+        var digest = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(body))).ToLowerInvariant();
+        var original = host.Jobs.Accept(new(id, "print", "Kitchen", "", "", "", null, host.Preview,
+            "accepted-intent", "{\"station\":\"POS-1\"}", digest), 1).Job;
+        host.Jobs.UpdateStatus(original, "completed");
+        await host.RestartAsync();
+        host.Inventory.Items = [];
+        using var replay = host.Request(body);
+        var response = await host.Client.SendAsync(replay);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(id, (await ReadJson(response)).GetProperty("id").GetString());
+        Assert.Single(host.Jobs.List());
+        Assert.Equal(0, host.Backend.Calls);
+    }
+
+    [Fact]
     public async Task DriverSettingsChange_RejectsUnacceptedPreview_ButDoesNotBlockLostAckReplay()
     {
         await using var host = await Harness.Start();
