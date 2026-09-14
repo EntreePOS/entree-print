@@ -8,6 +8,8 @@ All **308 .NET tests** pass (`%TEMP%\EntreeServiceCommandTests.log`). Service fi
 
 A read-only Windows inventory still reports the existing prototype running as PID 6252 at the original workspace `dist\EntreePrintPlugin\service\EntreePrintPlugin.exe` path. No live upgrade or service operation was attempted. Installed helper startup, clean-host permissions, alternate administrator approval and service-account deployment remain required.
 
+Fresh candidate built from source commit `6c1ae1f7380ec302c71308dbf69f3cbe3bea3b8e`: `dist/EntreePrint-0.0.1-beta-win-x64-service-command`, with 701 verified files, .NET 10.0.12 and eight matching icon frames in each executable. The tray's product version records that source commit. Installer: `dist/installer-service-command/EntreePrint-0.0.1-beta-win-x64-setup.exe`, **80,826,308 bytes**, SHA-256 `c1e676b2be7b21d2e48f766b3166142b3d05631aa68cf3f1de88acd1f0dbf833`. Input manifest SHA-256: `c0a48bdf6d330779abafdc8998360a1eab630f5edc384ba5586678b3eba2d057`. Inno Setup 7.1.0 compiled successfully; the installer remains unsigned and was not executed or uploaded. Logs: `%TEMP%\EntreeServiceCommandPublish.log` and `%TEMP%\EntreeServiceCommandInstaller.log`.
+
 PowerShell argument behavior follows [Microsoft's Windows PowerShell command-line reference](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_powershell_exe?view=powershell-5.1). Encoding is for correct argument transport, not authentication or concealment.
 
 ## September 14: standalone repository and public usage guide
