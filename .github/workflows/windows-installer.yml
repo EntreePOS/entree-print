@@ -27,6 +27,10 @@ jobs:
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: '22'
+      - name: Verify native printer preflight before parallel tests
+        run: |
+          dotnet test EntreePrintPlugin.Tests/EntreePrintPlugin.Tests.csproj --artifacts-path "$env:RUNNER_TEMP\build-tests" --filter 'FullyQualifiedName~WindowsPreflightReadsInstalledReceiptAndPdfDriversWithoutStartingADocument' --logger "trx;LogFileName=native-preflight.trx" --results-directory "$env:RUNNER_TEMP\installer-evidence"
+          if ($LASTEXITCODE -ne 0) { throw 'Native printer preflight failed; inspect native-preflight.trx before packaging.' }
       - name: Test application and installer boundaries
         run: |
           dotnet test EntreePrintPlugin.Tests/EntreePrintPlugin.Tests.csproj --artifacts-path "$env:RUNNER_TEMP\build-tests" --logger "trx;LogFileName=tests.trx" --results-directory "$env:RUNNER_TEMP\installer-evidence"

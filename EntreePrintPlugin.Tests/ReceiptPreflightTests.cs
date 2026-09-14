@@ -95,6 +95,7 @@ public sealed class ReceiptPreflightTests(Xunit.Abstractions.ITestOutputHelper o
         }
         foreach (var printer in printers)
         {
+            output.WriteLine($"Reading Windows driver settings: {printer}.");
             var driver = await new WindowsPrinterLayout().ReadAsync(printer, default);
             var name = WindowsPrinterLayout.ReadDriverName(printer);
             Assert.False(string.IsNullOrWhiteSpace(name));

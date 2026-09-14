@@ -28,8 +28,10 @@ public sealed class WindowsPrinterLayout : IPrinterLayoutSettings
         });
         try { return await query.WaitAsync(TimeSpan.FromSeconds(8), token); }
         catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
+        catch (TimeoutException error)
+        { throw new CommandException("PRINTER_SETTINGS_UNAVAILABLE", "Windows printer settings did not respond within eight seconds. Try again after the driver is ready.", error); }
         catch (Exception error) when (error is not CommandException)
-        { throw new CommandException("PRINTER_SETTINGS_UNAVAILABLE", "Windows could not read this printer's settings. Check the installed driver and Printing Preferences."); }
+        { throw new CommandException("PRINTER_SETTINGS_UNAVAILABLE", "Windows could not read this printer's settings. Check the installed driver and Printing Preferences.", error); }
     }
 
     private static PrinterLayoutSettings Read(string name)
