@@ -209,5 +209,5 @@ public sealed class ServiceSetupTests
     }
 
     private static Task<(int ExitCode, string Output, string Error)> Execute(string script, string overrides = "") =>
-        Task.Run(() => ServiceCommand.RunPowerShell(Stubs + "\n" + overrides + "\n" + script, 20000));
+        Task.Run(() => ServiceCommand.RunPowerShell(Stubs + "\n" + overrides + "\n" + script));
 }

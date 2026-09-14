@@ -21,6 +21,7 @@ public sealed class CodeDotAlignmentTests
             var html = "<body style='margin:0;padding-left:0.31px'><div style='height:139.37px'>Header</div>" +
                 VectorCodeRenderer.ToHtml(code, "ORDER123", align, showText: format != "qrcode") + "</body>";
             var layout = await ReceiptLayoutEngine.PrepareAsync(html, 72, directory, CancellationToken.None);
+            Assert.Empty(Directory.EnumerateDirectories(directory, "text-browser-*"));
             AssertGrid(layout, dpi);
             var savedBoxes = layout.Rectangles.Where(box => box.DotDpi.HasValue).ToArray();
             Assert.Equal(code.Rectangles.Length, savedBoxes.Length);

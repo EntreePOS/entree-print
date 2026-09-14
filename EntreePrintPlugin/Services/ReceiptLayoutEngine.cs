@@ -102,9 +102,19 @@ public static class ReceiptLayoutEngine
         {
             if (!process.HasExited) process.Kill(entireProcessTree: true);
             await process.WaitForExitAsync(CancellationToken.None);
-            try { Directory.Delete(profile, recursive: true); }
-            catch (IOException) { /* A driver/browser file handle may close late; never mask the render result. */ }
-            catch (UnauthorizedAccessException) { }
+            // WaitForExit observes the root, not every killed Chromium child.
+            // Give child handles a bounded chance to close before leaving a
+            // browser profile in receipt storage. Never mask the render result.
+            for (var attempt = 0; attempt < 20; attempt++)
+            {
+                try { Directory.Delete(profile, recursive: true); break; }
+                catch (DirectoryNotFoundException) { break; }
+                catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+                {
+                    if (attempt == 19) break;
+                    await Task.Delay(100, CancellationToken.None);
+                }
+            }
         }
     }
 }

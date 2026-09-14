@@ -110,6 +110,8 @@ try {
     Invoke-InstallerProcess (Join-Path $installRoot 'tray\EntreePrintTray.exe') @('--save-settings', $request)
     Assert-Check ((Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json).AccessToken -eq 'installer-ci-synthetic-token') 'Installed fixed settings helper saved the supplied data'
     Assert-ProtectedTree $dataRoot
+    Invoke-InstallerProcess (Join-Path $installRoot 'tray\EntreePrintTray.exe') @('--service-action', 'uninstall')
+    Assert-NoActivation
     # These are byte-retention fixtures, not accepted ledger jobs or recovery proof.
     $waiting = Join-Path $spoolPath 'ci-waiting.json'
     $uncertain = Join-Path $spoolPath 'ci-uncertain.json'
