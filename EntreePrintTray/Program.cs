@@ -6,20 +6,22 @@ static class Program
     ///  The main entry point for the application.
     /// </summary>
     [STAThread]
-    static void Main(string[] args)
+    static int Main(string[] args)
     {
         ApplicationConfiguration.Initialize();
+        if (SettingsWriter.TryRunCommand(args, out var settingsExitCode)) return settingsExitCode;
         var background = args.Contains("--background", StringComparer.OrdinalIgnoreCase);
         using var singleInstance = SingleInstanceGuard.TryAcquire();
         if (!singleInstance.IsPrimary)
         {
             if (!background) singleInstance.RequestActivation();
-            return;
+            return 0;
         }
 
         try
         {
             Application.Run(new TrayApplicationContext(singleInstance, showSettings: !background));
+            return 0;
         }
         catch (Exception error)
         {
@@ -36,6 +38,7 @@ static class Program
             }
             MessageBox.Show($"ENTREE Print could not start its tray application.\n\n{error.Message}\n\n{logMessage}",
                 "ENTREE Print", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            return 1;
         }
     }    
 }

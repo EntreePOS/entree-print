@@ -10,6 +10,7 @@
   <ItemGroup>
     <Compile Include="..\Shared\SecurityConfiguration.cs" Link="SecurityConfiguration.cs" />
     <Compile Include="..\Shared\NetworkConfiguration.cs" Link="NetworkConfiguration.cs" />
+    <Compile Include="..\Shared\ProtectedStorage.cs" Link="ProtectedStorage.cs" />
     <InternalsVisibleTo Include="EntreePrintPlugin.Tests" />
     <InternalsVisibleTo Include="SpoolerIdentityAudit" />
     <EmbeddedResource Include="Services\extract-text-layout.js" LogicalName="EntreePrint.ExtractLayout" />

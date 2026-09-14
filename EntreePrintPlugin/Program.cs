@@ -13,6 +13,13 @@ var sharedConfigPath = Environment.GetEnvironmentVariable("ENTREE_PRINT_CONFIG")
 builder.Configuration.AddJsonFile(sharedConfigPath, optional: true, reloadOnChange: false);
 
 var settings = PluginSettings.FromConfiguration(builder.Configuration);
+if (WindowsServiceHelpers.IsWindowsService())
+{
+    // Validate before claiming the ledger, launching a browser or opening listeners.
+    EntreePrint.Security.ProtectedStorage.AssertTrustedPath(sharedConfigPath);
+    EntreePrint.Security.ProtectedStorage.EnsureDirectory(settings.SpoolPath, privateData: true);
+    EntreePrint.Security.ProtectedStorage.ValidatePrivateTree(settings.SpoolPath);
+}
 builder.WebHost.UseUrls(settings.ListenUri.AbsoluteUri);
 
 builder.Services.AddPrintCors(settings);

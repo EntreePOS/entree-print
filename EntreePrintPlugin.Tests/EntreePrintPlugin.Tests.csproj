@@ -22,7 +22,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\EntreePrintPlugin\EntreePrintPlugin.csproj" />
+    <ProjectReference Include="..\EntreePrintPlugin\EntreePrintPlugin.csproj" Aliases="global,ServiceProject" />
     <ProjectReference Include="..\EntreePrintTray\EntreePrintTray.csproj" />
   </ItemGroup>
 

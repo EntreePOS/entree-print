@@ -55,9 +55,35 @@ Name: "{group}\Uninstall Entree Print"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\Entree Print"; Filename: "{app}\tray\EntreePrintTray.exe"; WorkingDir: "{app}\tray"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\tray\EntreePrintTray.exe"; Description: "Open Entree Print settings"; Flags: postinstall nowait skipifsilent runasoriginaluser
+Filename: "{app}\tray\EntreePrintTray.exe"; Description: "Open Entree Print settings"; Flags: postinstall nowait skipifsilent runasoriginaluser; Check: StorageReady
 
 [Code]
+var
+  StorageInitialized: Boolean;
+
+function StorageReady(): Boolean;
+begin
+  Result := StorageInitialized;
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+var
+  Code: Integer;
+begin
+  if CurStep <> ssPostInstall then Exit;
+  StorageInitialized := Exec(ExpandConstant('{app}\tray\EntreePrintTray.exe'), '--initialize-storage', '', SW_HIDE, ewWaitUntilTerminated, Code);
+  StorageInitialized := StorageInitialized and (Code = 0);
+  if not StorageInitialized then begin
+    Log('Protected data storage could not be initialized. Application files are installed, but printing was not enabled.');
+    if not WizardSilent then MsgBox('Entree Print could not prepare administrator-protected settings and receipt storage in ' + ExpandConstant('{commonappdata}\EntreePrintPlugin') + '. Existing data was not adopted or reset. Review its ownership and permissions before using this installation.', mbError, MB_OK);
+  end;
+end;
+
+function GetCustomSetupExitCode(): Integer;
+begin
+  if StorageInitialized then Result := 0 else Result := 12;
+end;
+
 function RunServiceCheck(const ScriptPath, Action: String): String;
 var
   ErrorPath, Params: String;

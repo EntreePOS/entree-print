@@ -50,13 +50,15 @@ public sealed class PortsForm : Form
         Controls.Add(panel);
         Controls.Add(buttons);
 
-        save.Click += (_, _) =>
+        save.Click += async (_, _) =>
         {
-            try { Save(); }
+            save.Enabled = false; panel.Enabled = false;
+            try { await SaveAsync(); }
             catch (Exception error) when (error is ArgumentException or IOException or UnauthorizedAccessException or System.Text.Json.JsonException)
             {
-                MessageBox.Show(error.Message, "ENTREE Print Plugin", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                if (!IsDisposed) MessageBox.Show(error.Message, "ENTREE Print Plugin", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
+            finally { if (!IsDisposed) { save.Enabled = true; panel.Enabled = true; } }
         };
         close.Click += (_, _) => Close();
 
@@ -70,7 +72,7 @@ public sealed class PortsForm : Form
         _discoveryPort.Value = config.DiscoveryPort;
     }
 
-    private void Save()
+    private async Task SaveAsync()
     {
         var baseline = File.Exists(_configPath) ? PluginConfig.Load(_configPath) : _sourceConfig;
         var config = baseline with
@@ -80,8 +82,8 @@ public sealed class PortsForm : Form
             DiscoveryPort = (int)_discoveryPort.Value
         };
 
-        config.Save(_configPath);
-        ConfigSaved?.Invoke(this, config);
+        await SettingsWriter.SaveAsync(config, _configPath);
+        if (!IsDisposed) ConfigSaved?.Invoke(this, config);
     }
 
     private static NumericUpDown NumberBox()

@@ -51,6 +51,8 @@ public sealed class WindowsServiceManager
             throw new FileNotFoundException("Service executable was not found. Publish the service first or set ENTREE_PRINT_SERVICE_EXE.", exePath);
         }
 
+        EntreePrint.Security.ProtectedStorage.AssertTrustedPath(exePath);
+
         RunElevatedScript(BuildInstallScript(exePath, config));
     }
 

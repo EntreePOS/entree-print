@@ -20,6 +20,7 @@ public static class ReceiptLayoutEngine
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Microsoft/Edge/Application/msedge.exe"),
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Google/Chrome/Application/chrome.exe")
         }.FirstOrDefault(File.Exists) ?? throw new InvalidOperationException("Install Microsoft Edge or Chrome to prepare positioned text.");
+        EntreePrint.Security.ProtectedStorage.AssertTrustedPath(browser);
         var profile = Path.Combine(directory, "text-browser-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(profile);
         var start = new ProcessStartInfo(browser) { UseShellExecute = false, CreateNoWindow = true };

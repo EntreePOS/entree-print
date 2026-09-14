@@ -120,13 +120,15 @@ public sealed class SettingsForm : Form
         Controls.Add(tabs);
         Controls.Add(buttons);
 
-        save.Click += (_, _) =>
+        save.Click += async (_, _) =>
         {
-            try { Save(); }
+            save.Enabled = false; resetDefault.Enabled = false; tabs.Enabled = false;
+            try { await SaveAsync(); }
             catch (Exception error)
             {
-                MessageBox.Show(this, error.Message, "Unable to save settings", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                if (!IsDisposed) MessageBox.Show(this, error.Message, "Unable to save settings", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
+            finally { if (!IsDisposed) { save.Enabled = true; resetDefault.Enabled = true; tabs.Enabled = true; } }
         };
         resetDefault.Click += (_, _) =>
         {
@@ -155,7 +157,7 @@ public sealed class SettingsForm : Form
         _printRetryDelaySeconds.Value = Math.Max(1, config.PrintRetryDelayMs / 1000);
     }
 
-    private void Save()
+    private async Task SaveAsync()
     {
         var config = _configSnapshot.WithLanAccess(_localNetworkAccessible.Checked) with
         {
@@ -170,9 +172,11 @@ public sealed class SettingsForm : Form
             PrintRetryDelayMs = (int)_printRetryDelaySeconds.Value * 1000
         };
 
-        config.Save(_configPath);
+        var startWithWindows = _trayStartup.Checked;
+        await SettingsWriter.SaveAsync(config, _configPath);
+        if (IsDisposed) return;
         _configSnapshot = config;
-        TrayStartupRegistration.SetEnabled(_trayStartup.Checked);
+        TrayStartupRegistration.SetEnabled(startWithWindows);
         ConfigSaved?.Invoke(this, config);
     }
 

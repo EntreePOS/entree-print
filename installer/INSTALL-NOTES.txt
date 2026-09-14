@@ -4,6 +4,8 @@ This development installer includes the Windows x64 application, .NET runtime, J
 
 After installation, open Entree Print, generate an access token and save your settings to enable the Windows print service. Enable "Start with Windows" in Settings for the Windows account that uses the tray. The printer icon may be under the hidden-icons arrow beside the clock.
 
+Windows administrator approval is required when saving service settings. The tray stays open under your normal Windows account. Existing data folders with unsafe ownership or permissions are rejected without resetting them; an administrator must review them before setup can finish. Setup returns exit code 12 if protected storage could not be prepared.
+
 Before updating, stop the Entree Print service from its tray menu, then exit the tray application. Start the service again after the update. Installation will not forcibly interrupt a running service.
 
 Uninstalling stops and removes the service belonging to this installation. Saved settings and receipt data in ProgramData\EntreePrintPlugin are retained. Uninstallation does not cancel jobs already accepted by the Windows spooler. Keep this retained data if you plan to reinstall; it includes receipt history and duplicate-request protection.

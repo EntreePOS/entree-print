@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using EntreePrint.Security;
 
 namespace EntreePrintTray;
 
@@ -67,11 +68,19 @@ public sealed record PluginConfig
     public void Save(string path)
     {
         var validated = Validate();
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        var installed = string.Equals(Path.GetFullPath(path), DefaultPath, StringComparison.OrdinalIgnoreCase);
+        if (installed)
+        {
+            InitializeInstalledStorage();
+            if (File.Exists(path)) ProtectedStorage.AssertTrustedPath(path);
+        }
+        else Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         var temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
         try
         {
-            using (var file = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+            using (var file = installed
+                ? new FileInfo(temporary).Create(FileMode.CreateNew, System.Security.AccessControl.FileSystemRights.Write, FileShare.None, 4096, FileOptions.None, ProtectedStorage.ConfigurationPermissions())
+                : new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None))
             {
                 JsonSerializer.Serialize(file, validated, JsonOptions);
                 file.Flush(flushToDisk: true);
@@ -79,6 +88,17 @@ public sealed record PluginConfig
             File.Move(temporary, path, overwrite: true);
         }
         finally { if (File.Exists(temporary)) File.Delete(temporary); }
+    }
+
+    internal byte[] ToValidatedJson() => JsonSerializer.SerializeToUtf8Bytes(Validate(), JsonOptions);
+
+    internal static void InitializeInstalledStorage()
+    {
+        if (!ProtectedStorage.IsAdministrator()) throw new UnauthorizedAccessException("Administrator approval is required to save service settings.");
+        var directory = Path.GetDirectoryName(DefaultPath)!;
+        ProtectedStorage.EnsureDirectory(directory, privateData: false);
+        ProtectedStorage.EnsureDirectory(Path.Combine(directory, "spool"), privateData: true);
+        if (File.Exists(DefaultPath)) ProtectedStorage.AssertTrustedPath(DefaultPath);
     }
 
     private static readonly JsonSerializerOptions JsonOptions = new()
