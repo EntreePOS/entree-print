@@ -7,6 +7,17 @@ namespace EntreePrintPlugin.Tests;
 public sealed class ConfigurationTests
 {
     [Fact]
+    public void DefaultSpool_IsOutsideInstalledBinaries_AndExplicitLocationIsPreserved()
+    {
+        var expected = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "EntreePrintPlugin", "spool");
+        Assert.Equal(expected, new PluginSettings().SpoolPath);
+        Assert.Equal(expected, PluginSettings.FromConfiguration(new ConfigurationBuilder().Build()).SpoolPath);
+        var custom = Path.Combine(Path.GetTempPath(), "EntreeExplicitSpool");
+        var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["SpoolPath"] = custom }).Build();
+        Assert.Equal(custom, PluginSettings.FromConfiguration(config).SpoolPath);
+    }
+
+    [Fact]
     public void SavedTrayConfiguration_OverridesBundledDefaults_AndRetainsServiceSettings()
     {
         var directory = Path.Combine(Path.GetTempPath(), "EntreeConfigurationTests", Guid.NewGuid().ToString("N"));

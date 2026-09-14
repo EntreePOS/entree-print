@@ -20,7 +20,7 @@ $manifestPath = Join-Path $PackageRoot 'manifest.sha256.json'
 $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
 if ($manifest.schema -cne 'entree-print-package-0.0.1' -or $manifest.algorithm -cne 'sha256' -or
     $manifest.version -cne '0.0.1-beta' -or $manifest.runtime -cne 'win-x64' -or
-    $manifest.configuration -cnotin @('Debug', 'Release') -or $manifest.selfContained -isnot [bool] -or $manifest.selfContained) {
+    $manifest.configuration -cnotin @('Debug', 'Release') -or $manifest.selfContained -isnot [bool]) {
     throw 'Unsupported or incomplete package metadata.'
 }
 if ($null -eq $manifest.files -or @($manifest.files).Count -eq 0) { throw 'The package manifest is empty.' }
@@ -50,6 +50,13 @@ foreach ($item in $actualFiles) {
     $relative = $item.FullName.Substring($PackageRoot.Length + 1).Replace('\', '/')
     if ($relative -ieq 'manifest.sha256.json') { continue }
     if (-not $expectedByPath.ContainsKey($relative)) { throw "Unexpected package file: $relative" }
+}
+if ($manifest.selfContained) {
+    foreach ($folder in @('service', 'tray')) {
+        foreach ($runtimeFile in @('hostfxr.dll', 'hostpolicy.dll', 'coreclr.dll', 'clrjit.dll', 'System.Private.CoreLib.dll')) {
+            if (-not $expectedByPath.ContainsKey("$folder/$runtimeFile")) { throw "Self-contained runtime file is missing: $folder/$runtimeFile" }
+        }
+    }
 }
 foreach ($entry in $manifest.files) {
     $fullPath = Join-Path $PackageRoot $entry.path.Replace('/', '\')

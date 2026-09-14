@@ -53,6 +53,7 @@ $count = [BitConverter]::ToUInt16($bytes, 4)
 [xml]$buildProperties = Get-Content -LiteralPath (Join-Path $PSScriptRoot '..\Directory.Build.props') -Raw
 $expectedTfm = ([string]$buildProperties.Project.PropertyGroup.TargetFramework).Split('-')[0]
 $expectedRuntime = [string]$buildProperties.Project.PropertyGroup.RuntimeFrameworkVersion
+$selfContained = (Get-Content -LiteralPath (Join-Path $PackageRoot 'manifest.sha256.json') -Raw | ConvertFrom-Json).selfContained
 $expected = @(for ($i = 0; $i -lt $count; $i++) {
     $entry = 6 + $i * 16
     $length = [BitConverter]::ToUInt32($bytes, $entry + 8)
@@ -63,7 +64,8 @@ foreach ($relative in @('service\EntreePrintPlugin', 'tray\EntreePrintTray')) {
     $runtime = (Get-Content -LiteralPath (Join-Path $PackageRoot ($relative + '.runtimeconfig.json')) -Raw | ConvertFrom-Json).runtimeOptions
     $frameworkNames = @('Microsoft.NETCore.App', 'Microsoft.WindowsDesktop.App')
     if ($relative.StartsWith('service\')) { $frameworkNames += 'Microsoft.AspNetCore.App' }
-    $frameworks = @($runtime.frameworks)
+    $frameworks = @(if ($selfContained) { $runtime.includedFrameworks } else { $runtime.frameworks })
+    if ($selfContained -and ($runtime.framework -or $runtime.frameworks)) { throw "Self-contained application depends on shared frameworks: $relative" }
     if ($runtime.tfm -ne $expectedTfm -or $frameworks.Count -ne $frameworkNames.Count -or
         @(Compare-Object $frameworkNames @($frameworks | ForEach-Object { $_.name })).Count -ne 0 -or
         @($frameworks | Where-Object { $_.version -ne $expectedRuntime }).Count -ne 0) {

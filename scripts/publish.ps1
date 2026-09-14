@@ -2,7 +2,8 @@ param(
     [ValidateSet('Release', 'Debug')][string]$Configuration = 'Release',
     [ValidateSet('win-x64')][string]$Runtime = 'win-x64',
     [string]$OutputRoot = '',
-    [string]$ArtifactsPath = ''
+    [string]$ArtifactsPath = '',
+    [switch]$SelfContained
 )
 $ErrorActionPreference = 'Stop'
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
@@ -31,7 +32,7 @@ foreach ($project in @(
     @{ Name = 'EntreePrintTray'; Folder = 'tray' }
 )) {
     $projectPath = Join-Path $repoRoot "$($project.Name)\$($project.Name).csproj"
-    dotnet publish $projectPath -c $Configuration -r $Runtime --self-contained false --artifacts-path $ArtifactsPath -o (Join-Path $OutputRoot $project.Folder)
+    dotnet publish $projectPath -c $Configuration -r $Runtime --self-contained $SelfContained.IsPresent.ToString().ToLowerInvariant() --artifacts-path $ArtifactsPath -o (Join-Path $OutputRoot $project.Folder)
     if ($LASTEXITCODE -ne 0) { throw "$($project.Name) publish failed. Incomplete output is not a package; use a new directory after fixing the build." }
 }
 New-Item -ItemType Directory -Path (Join-Path $OutputRoot 'sdk'), (Join-Path $OutputRoot 'scripts') | Out-Null
@@ -57,7 +58,7 @@ $files = @(Get-ChildItem -LiteralPath $OutputRoot -Recurse -Force -File | Sort-O
     algorithm = 'sha256'
     configuration = $Configuration
     runtime = $Runtime
-    selfContained = $false
+    selfContained = $SelfContained.IsPresent
     files = $files
 } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $OutputRoot 'manifest.sha256.json') -Encoding UTF8
 & (Join-Path $PSScriptRoot 'verify-package.ps1') -PackageRoot $OutputRoot

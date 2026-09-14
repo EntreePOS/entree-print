@@ -10,7 +10,8 @@ public sealed record PluginSettings
     public Dictionary<string, Models.PrinterProfile> PrinterProfiles { get; init; } = new(StringComparer.OrdinalIgnoreCase);
     public int RetryTimeoutMs { get; init; } = 60000;
     public int RequestTimeoutMs { get; init; } = 3000;
-    public string SpoolPath { get; init; } = Path.Combine(AppContext.BaseDirectory, "spool");
+    public static string DefaultSpoolPath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "EntreePrintPlugin", "spool");
+    public string SpoolPath { get; init; } = DefaultSpoolPath;
     public string BrowserExecutablePath { get; init; } = "";
     public int PrinterStatusRefreshSeconds { get; init; } = 5;
     public int PrintRetryMaxAttempts { get; init; } = 120;
@@ -30,7 +31,7 @@ public sealed record PluginSettings
             PrinterProfiles = configuration.GetSection("PrinterProfiles").Get<Dictionary<string, Models.PrinterProfile>>() ?? new(StringComparer.OrdinalIgnoreCase),
             RetryTimeoutMs = ReadInt(configuration, "API_RETRY_TIMEOUT_MS", "Plugin:RetryTimeoutMs", "RetryTimeoutMs", 60000),
             RequestTimeoutMs = ReadInt(configuration, "API_REQUEST_TIMEOUT_MS", "Plugin:RequestTimeoutMs", "RequestTimeoutMs", 3000),
-            SpoolPath = ResolvePath(ReadString(configuration, "SPOOL_PATH", "Plugin:SpoolPath", "SpoolPath", Path.Combine(AppContext.BaseDirectory, "spool"))),
+            SpoolPath = ResolvePath(ReadString(configuration, "SPOOL_PATH", "Plugin:SpoolPath", "SpoolPath", DefaultSpoolPath)),
             BrowserExecutablePath = ReadString(configuration, "BROWSER_EXECUTABLE_PATH", "Plugin:BrowserExecutablePath", "BrowserExecutablePath", ""),
             PrinterStatusRefreshSeconds = ReadInt(configuration, "PRINTER_STATUS_REFRESH_SECONDS", "Plugin:PrinterStatusRefreshSeconds", "PrinterStatusRefreshSeconds", 5),
             PrintRetryMaxAttempts = ReadInt(configuration, "PRINT_RETRY_MAX_ATTEMPTS", "Plugin:PrintRetryMaxAttempts", "PrintRetryMaxAttempts", 120),

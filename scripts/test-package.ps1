@@ -53,6 +53,7 @@ Check-Package invalidHash { param($root, $manifest) $manifest.files[0].sha256 = 
 Check-Package negativeSize { param($root, $manifest) $manifest.files[0].bytes = -1 } 'Invalid manifest digest or size'
 Check-Package fractionalSize { param($root, $manifest) $manifest.files[0].bytes = 7.5 } 'Invalid manifest digest or size'
 Check-Package metadata { param($root, $manifest) $manifest.PSObject.Properties.Remove('selfContained') } 'Unsupported or incomplete package metadata'
+Check-Package missingRuntime { param($root, $manifest) $manifest.selfContained = $true } 'Self-contained runtime file is missing'
 Check-Package link { param($root) New-Item -ItemType Junction -Path (Join-Path $root 'linked') -Target $testRoot | Out-Null } 'Links are not package files'
 # Reusing an existing output must fail before dotnet publish can touch it.
 $guardRoot = Join-Path $testRoot 'valid'

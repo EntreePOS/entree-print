@@ -1,0 +1,13 @@
+Entree Print 0.0.1-beta
+
+This development installer includes the Windows x64 application, .NET runtime, JavaScript SDK and documentation. Microsoft Edge or Google Chrome and your Windows printer drivers are still required.
+
+After installation, open Entree Print, generate an access token and save your settings to enable the Windows print service. Enable "Start with Windows" in Settings for the Windows account that uses the tray. The printer icon may be under the hidden-icons arrow beside the clock.
+
+Before updating, stop the Entree Print service from its tray menu, then exit the tray application. Start the service again after the update. Installation will not forcibly interrupt a running service.
+
+Uninstalling stops and removes the service belonging to this installation. Saved settings and receipt data in ProgramData\EntreePrintPlugin are retained. Uninstallation does not cancel jobs already accepted by the Windows spooler. Keep this retained data if you plan to reinstall; it includes receipt history and duplicate-request protection.
+
+This beta has not completed clean-machine installation, service-account and network failure pilots. Do not use it as a verified production release.
+
+Installer built with Inno Setup, by Jordan Russell and Martijn Laan: https://jrsoftware.org/
