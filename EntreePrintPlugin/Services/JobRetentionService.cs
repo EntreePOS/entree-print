@@ -7,7 +7,7 @@ public sealed class JobRetentionService(JobStore jobs, ILogger<JobRetentionServi
         using var timer = new PeriodicTimer(TimeSpan.FromMinutes(1));
         do
         {
-            try { jobs.ExpireArtifacts(); }
+            try { jobs.FlushPendingEvents(); jobs.ExpireArtifacts(); }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException)
             { logger.LogWarning(error, "Receipt cleanup stopped after a storage failure; unprocessed receipts and all intent records remain retained."); }
         }

@@ -47,6 +47,14 @@ public sealed class JobStore : IDisposable
                 var stored = JsonSerializer.Deserialize<StoredJob>(bytes)
                     ?? throw new InvalidDataException($"Unreadable job record: {path}");
                 ValidatePrepared(stored.Command);
+                long priorVersion = 0;
+                foreach (var pending in stored.PendingEvents ?? [])
+                {
+                    if (pending.Id != stored.Job.Id || pending.Version <= priorVersion || pending.Version > stored.Job.Version)
+                        throw new InvalidDataException($"Invalid pending job event: {path}");
+                    priorVersion = pending.Version;
+                }
+                if (stored.PendingEvents?.Length > 256) throw new InvalidDataException($"Too many pending job events: {path}");
                 if (stored.Schema != 1 || stored.Job.Id != stored.Command.Id || stored.Hash != Hash(stored.Command, stored.ArchivedContentHash)
                     || (stored.ArchivedContentHash is null) != (stored.Job.ArtifactExpiredAt is null)
                     || (stored.ArchivedContentHash is not null && (stored.Command.Prepared is not null || !CanExpire(stored.Job)
@@ -57,9 +65,11 @@ public sealed class JobStore : IDisposable
                 _storedBytes += bytes.Length;
                 if (stored.Command.Prepared is not null) _preparedCount++;
                 _jobs[stored.Job.Id] = stored with { Bytes = bytes.Length };
+            }
+            FlushPendingEvents(throwOnFailure: false);
+            foreach (var stored in _jobs.Values.ToArray())
                 if (stored.Job.Status is "processing" or "submitting")
                     UpdateStatus(stored.Job, "needs_attention", "Service stopped during handoff; reconcile Windows before reprinting.");
-            }
         }
         catch { _owner.Dispose(); throw; }
     }
@@ -93,7 +103,7 @@ public sealed class JobStore : IDisposable
             var now = _clock.GetUtcNow();
             var job = new JobRecord { Id = command.Id, Type = command.Type, Printer = command.Printer,
                 RenderId = command.Prepared?.Id, Status = "queued", MaxAttempts = maxAttempts, AcceptedAt = now, UpdatedAt = now };
-            var stored = new StoredJob(1, job, command, hash);
+            var stored = PrepareWrite(new StoredJob(1, job, command, hash));
             var bytes = JsonSerializer.SerializeToUtf8Bytes(stored);
             if (_storedBytes + bytes.Length > _limits.Bytes)
                 throw new CommandException("QUEUE_FULL", "The receipt ledger has reached its storage budget. Existing jobs are retained.");
@@ -103,7 +113,7 @@ public sealed class JobStore : IDisposable
             _jobs.Add(command.Id, stored with { Bytes = bytes.Length });
             _storedBytes += bytes.Length;
             if (command.Prepared is not null) _preparedCount++;
-            _events.Publish("job", job with { });
+            Notify(_jobs[command.Id]);
             return (job with { }, true);
         }
     }
@@ -157,12 +167,14 @@ public sealed class JobStore : IDisposable
                     ArchivedContentHash = stored.Command.Prepared!.ContentHash,
                     Command = stored.Command with { Prepared = null }
                 };
+                next = PrepareWrite(next);
                 Persist(next); // Atomic replacement: failure keeps both the layout and dedup record intact.
                 var bytes = JsonSerializer.SerializeToUtf8Bytes(next).Length;
+                var previousBytes = _jobs[next.Job.Id].Bytes;
                 _jobs[next.Job.Id] = next with { Bytes = bytes };
-                _storedBytes += bytes - stored.Bytes;
+                _storedBytes += bytes - previousBytes;
                 _preparedCount--;
-                _events.Publish("job", next.Job with { });
+                Notify(_jobs[next.Job.Id]);
                 count++;
             }
         }
@@ -392,12 +404,56 @@ public sealed class JobStore : IDisposable
         if (_jobs[next.Id].Command.Prepared is not null)
             next.ArtifactExpiresAt = CanExpire(next) ? next.ArtifactExpiresAt ?? next.CompletedAt + _artifactRetention : null;
         next = next with { Version = _jobs[next.Id].Job.Version + 1 };
-        var stored = _jobs[next.Id] with { Job = next };
+        var stored = PrepareWrite(_jobs[next.Id] with { Job = next });
         Persist(stored); // No state/event is visible before the write succeeds.
         var bytes = JsonSerializer.SerializeToUtf8Bytes(stored).Length;
-        _storedBytes += bytes - stored.Bytes;
+        _storedBytes += bytes - _jobs[next.Id].Bytes;
         _jobs[next.Id] = stored with { Bytes = bytes };
-        _events.Publish("job", next with { });
+        Notify(_jobs[next.Id]);
+    }
+
+    private StoredJob PrepareWrite(StoredJob next)
+    {
+        if (_jobs.TryGetValue(next.Job.Id, out var previous) && previous.PendingEvents?.Length > 0)
+        {
+            Notify(previous);
+        }
+        var pending = _jobs.GetValueOrDefault(next.Job.Id)?.PendingEvents ?? [];
+        if (_events.History is null && pending.Length == 0) return next with { PendingEvents = null };
+        if (pending.Length >= 256) throw new IOException("Pending job notifications reached their limit. Existing state remains retained.");
+        return next with { PendingEvents = [.. pending, next.Job with { }] };
+    }
+
+    private void Notify(StoredJob stored)
+    {
+        if (stored.PendingEvents is not { Length: > 0 }) { _events.PublishJob(stored.Job, stored.Command); return; }
+        // Event-log failure must not turn durable acceptance into a false rejection.
+        // The same atomic job file retains each notification alongside later state.
+        // A bounded backlog permits delivery while the event log is unavailable.
+        try
+        {
+            if (_events.History is null) throw new IOException("Durable event history is required to recover this job notification.");
+            foreach (var pending in stored.PendingEvents) _events.PublishJob(pending, stored.Command);
+            var cleared = stored with { PendingEvents = null };
+            Persist(cleared);
+            var bytes = JsonSerializer.SerializeToUtf8Bytes(cleared).Length;
+            _jobs[stored.Job.Id] = cleared with { Bytes = bytes };
+            _storedBytes += bytes - stored.Bytes;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        { /* The durable job remains authoritative and retains its pending event. */ }
+    }
+
+    public void FlushPendingEvents(bool throwOnFailure = true)
+    {
+        lock (_gate)
+        {
+            foreach (var stored in _jobs.Values.Where(item => item.PendingEvents?.Length > 0).ToArray())
+            {
+                Notify(stored);
+                if (throwOnFailure && _jobs[stored.Job.Id].PendingEvents?.Length > 0) throw new IOException("Pending job events could not be recovered.");
+            }
+        }
     }
 
     private static AcceptedCommand Clone(AcceptedCommand command) => JsonSerializer.Deserialize<AcceptedCommand>(JsonSerializer.SerializeToUtf8Bytes(command))!;
@@ -439,7 +495,7 @@ public sealed class JobStore : IDisposable
     {
         lock (_gate) { _disposed = true; _owner?.Dispose(); }
     }
-    private sealed record StoredJob(int Schema, JobRecord Job, AcceptedCommand Command, string Hash, string? ArchivedContentHash = null)
+    private sealed record StoredJob(int Schema, JobRecord Job, AcceptedCommand Command, string Hash, string? ArchivedContentHash = null, JobRecord[]? PendingEvents = null)
     {
         [System.Text.Json.Serialization.JsonIgnore]
         public int Bytes { get; init; }

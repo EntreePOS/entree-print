@@ -148,7 +148,9 @@ public sealed class V2EndpointTests
         await using var host = await Harness.Start();
         using var request = host.Request("""{"printer":"Kitchen","content":[{"type":"qrcode","value":"订单42"}]}""");
         request.RequestUri = new Uri("/api/renders", UriKind.Relative);
-        var rendered = await ReadJson(await host.Client.SendAsync(request));
+        using var response = await host.Client.SendAsync(request);
+        Assert.True(response.IsSuccessStatusCode, string.Join(Environment.NewLine, host.Errors));
+        var rendered = await ReadJson(response);
         Assert.Equal(203, rendered.GetProperty("dpi").GetInt32());
         Assert.Equal("windows_driver", rendered.GetProperty("settingsSource").GetString());
         Assert.Equal(host.Driver.Layout.PrintableWidthMm, rendered.GetProperty("widthMm").GetDecimal());
@@ -449,6 +451,8 @@ public sealed class V2EndpointTests
         public readonly Driver Driver = new();
         public ServiceIdentity Identity = null!;
         public JobStore Jobs = null!;
+        public EventBroadcaster Events = null!;
+        public readonly System.Collections.Concurrent.ConcurrentQueue<string> Errors = new();
         public PreparedReceipt Preview = null!;
         public HttpClient Client = null!;
         private WebApplication _app = null!;
@@ -467,7 +471,7 @@ public sealed class V2EndpointTests
         {
             var host = this;
             host.Identity = new ServiceIdentity(host.DirectoryPath);
-            var events = new EventBroadcaster();
+            var events = host.Events = new EventBroadcaster(Path.Combine(host.DirectoryPath, "events"));
             host.Jobs = new JobStore(events, Path.Combine(host.DirectoryPath, "jobs"), host.Clock, host._settings.ReceiptRetentionDays);
             var settings = _settings;
             var renders = new PreparedReceiptStore(Path.Combine(host.DirectoryPath, "renders"), host.Identity, host.Clock);
@@ -480,6 +484,7 @@ public sealed class V2EndpointTests
             builder.WebHost.UseTestServer();
             builder.Logging.ClearProviders();
             builder.Logging.AddConsole().SetMinimumLevel(LogLevel.Warning);
+            builder.Logging.AddProvider(new ErrorCapture(host.Errors));
             builder.Services.AddSingleton(host.Identity);
             builder.Services.AddPrintCors(settings);
             builder.Services.AddSingleton(new V2ApiService(settings, host.Identity, host.Inventory, renders, host.Jobs, processor, host.Driver));
@@ -527,13 +532,26 @@ public sealed class V2EndpointTests
         private async Task CloseAsync()
         {
             await _queue.StopAsync(CancellationToken.None);
-            Client.Dispose(); await _app.DisposeAsync(); _queue.Dispose(); Jobs.Dispose();
+            Client.Dispose(); await _app.DisposeAsync(); _queue.Dispose(); Jobs.Dispose(); Events.Dispose();
         }
 
         public async ValueTask DisposeAsync()
         {
             await CloseAsync();
             if (Directory.Exists(DirectoryPath)) Directory.Delete(DirectoryPath, recursive: true);
+        }
+
+        private sealed class ErrorCapture(System.Collections.Concurrent.ConcurrentQueue<string> errors) : ILoggerProvider
+        {
+            public ILogger CreateLogger(string categoryName) => new Capture(errors);
+            public void Dispose() { }
+            private sealed class Capture(System.Collections.Concurrent.ConcurrentQueue<string> errors) : ILogger
+            {
+                public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+                public bool IsEnabled(LogLevel level) => level >= LogLevel.Warning;
+                public void Log<TState>(LogLevel level, EventId id, TState state, Exception? error, Func<TState, Exception?, string> formatter)
+                { if (IsEnabled(level)) errors.Enqueue(formatter(state,error) + Environment.NewLine + error); }
+            }
         }
     }
 }
