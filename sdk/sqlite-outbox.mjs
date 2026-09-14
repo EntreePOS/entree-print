@@ -28,8 +28,7 @@ export async function createSqliteOutboxStorage({ directory, lockTimeoutMs = 100
     try { return await work(); } finally { operations--; }
   }
 
-  async function acquire(file) {
-    const deadline = performance.now() + lockTimeoutMs;
+  async function acquire(file, deadline = performance.now() + lockTimeoutMs) {
     for (;;) {
       let db;
       try {
@@ -47,10 +46,21 @@ export async function createSqliteOutboxStorage({ directory, lockTimeoutMs = 100
 
   async function transaction(work) {
     return operation(async () => {
-      const db = await acquire(path);
+      const deadline = performance.now() + lockTimeoutMs;
+      const db = await acquire(path, deadline);
       try {
         const result = work(db);
-        db.exec('COMMIT');
+        for (;;) {
+          try { db.exec('COMMIT'); break; }
+          catch (error) {
+            // SQLITE_BUSY leaves this transaction active. Another connection's
+            // brief read can block COMMIT even after BEGIN IMMEDIATE succeeded.
+            // Retry only COMMIT: rerunning work could apply an update twice.
+            if (error?.code !== 'ERR_SQLITE_ERROR' || (error.errcode & 255) !== 5) throw error;
+            if (performance.now() >= deadline) throw failure('OUTBOX_BUSY', 'The print outbox could not commit before the storage lock deadline. Retry after the other reader finishes.');
+            await delay(Math.min(25, Math.max(1, deadline - performance.now())));
+          }
+        }
         return result;
       } catch (error) {
         try { db.exec('ROLLBACK'); } catch { /* Preserve the original storage failure. */ }

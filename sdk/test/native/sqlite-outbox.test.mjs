@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fork } from 'node:child_process';
 import { once } from 'node:events';
+import { setTimeout as delay } from 'node:timers/promises';
 import { DatabaseSync } from 'node:sqlite';
 import { webcrypto } from 'node:crypto';
 import { createSqliteOutboxStorage } from '../../sqlite-outbox.mjs';
@@ -55,6 +56,45 @@ test('two native processes atomically deduplicate an intent', async t => {
   for (const result of results) assert.equal(result.code,0,result.stderr);
   const store = await createSqliteOutboxStorage({directory:path});
   assert.equal((await store.list()).length,1); store.close();
+});
+
+test('a reader blocking COMMIT delays acknowledgement without applying the update twice', {timeout:5000}, async t => {
+  const path = await directory(t), store = await createSqliteOutboxStorage({directory:path,lockTimeoutMs:2000});
+  const saved = await store.add(record());
+  const reader = new DatabaseSync(join(path,'intents.sqlite'));
+  let committing;
+  try {
+    reader.exec('BEGIN');
+    assert.equal(reader.prepare('SELECT version FROM intents').get().version,1);
+    let acknowledged = false;
+    committing = store.update(saved,{...saved,state:'prepared',wire:{json:'one exact wire'}}).then(value => { acknowledged = true; return value; });
+    committing.catch(() => {}); // Observe early failure while the reader is deliberately held.
+    await delay(75);
+    assert.equal(acknowledged,false);
+    assert.equal(reader.prepare('SELECT version FROM intents').get().version,1);
+    assert.throws(() => store.close(),{code:'OUTBOX_BUSY'});
+    reader.exec('COMMIT');
+    const updated = await committing;
+    assert.equal(updated.version,2);
+    assert.equal(updated.wire.json,'one exact wire');
+    assert.deepEqual(await store.list(),[updated]);
+  } finally { reader.close(); await committing?.catch(() => {}); store.close(); }
+});
+
+test('COMMIT lock timeout rolls back the update and preserves the uncertain request', {timeout:5000}, async t => {
+  const path = await directory(t), store = await createSqliteOutboxStorage({directory:path,lockTimeoutMs:75});
+  const saved = await store.add({...record(),state:'submitting',mayHaveAccepted:true,wire:{json:'original request'}});
+  const reader = new DatabaseSync(join(path,'intents.sqlite'));
+  try {
+    reader.exec('BEGIN'); reader.prepare('SELECT * FROM intents').all();
+    await assert.rejects(store.update(saved,{...saved,state:'accepted'}),{code:'OUTBOX_BUSY',delivery:'not_sent'});
+    reader.exec('ROLLBACK');
+    assert.deepEqual(await store.list(),[saved]);
+    const updated = await store.update(saved,{...saved,state:'accepted'});
+    assert.equal(updated.version,2);
+    assert.equal(updated.wire.json,'original request');
+    assert.equal(updated.mayHaveAccepted,true);
+  } finally { reader.close(); store.close(); }
 });
 
 test('process crash releases only its queue lock and preserves previously committed wire', {timeout:10000}, async t => {
