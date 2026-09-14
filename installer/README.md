@@ -40,6 +40,8 @@ This is real installer execution with printing left inactive. The receipt files 
 
 The first successful real lifecycle run is [34819567689](https://github.com/EntreePOS/entree-print/actions/runs/34819567689), from `bb1432be8ed81fd06567da864461b12564ea7674`. Its [recorded result](evidence/windows-ci-34819567689.json) contains 64 checkpoints across the lifecycle phases. All 308 application tests also passed. The artifact is an unsigned development candidate, not a published beta release.
 
+The updated candidate from `297a4645b5018f1469886bb30c983ccbbd8dec4b` passes the same lifecycle in [run 34822273890](https://github.com/EntreePOS/entree-print/actions/runs/34822273890), with 319 passing application tests and the corrected settings-request reader. Its [recorded result](evidence/windows-ci-34822273890.json) and PACKAGE_VERIFICATION.md identify the tested installer and independently verified hash. It remains an unsigned development candidate.
+
 ## Remaining installer release checks
 
 1. Clean Windows installation with no .NET runtime; confirm both packaged applications start.

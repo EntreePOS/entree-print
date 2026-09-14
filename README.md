@@ -66,7 +66,7 @@ const history = await print.getJobs('cashier', { limit: 30 });
 const job = await print.getJob({ idempotencyKey: savedIntent.id });
 ```
 
-Awaiting `search()` collects verified available servers. `search().connect()` selects the first successful connection. Automatic heartbeat checks the print service; printer status comes from Windows and may not expose paper or cover sensors. Same-service address recovery is implemented. Automatic failover to a different server is still pending.
+Awaiting `search()` collects verified available servers. `search().connect()` selects the first successful connection. For configured primary/backup servers, [`connect({ nodes })`](sdk/README.md#connecting-through-a-backup-server) tries them in preference order and returns a library bound to the selected server. Automatic heartbeat checks the print service; printer status comes from Windows and may not expose paper or cover sensors. Same-service address recovery is implemented. Existing jobs never move automatically to a different server; routing during printing remains pending.
 
 An accepted job means the plugin saved it. Windows completion is a separate observation and is not independent confirmation that paper emerged. Never create another intent key merely because a response was lost.
 

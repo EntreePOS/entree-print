@@ -1,5 +1,13 @@
 # Development package verification — 2026-09-13
 
+## September 14: bounded settings-request candidate
+
+[Run 34822273890](https://github.com/EntreePOS/entree-print/actions/runs/34822273890) passed from source `297a4645b5018f1469886bb30c983ccbbd8dec4b`, including the settings-request correction and configured initial backup connections. The downloaded TRX confirms **319 executed/passed, zero failed or skipped**. The installer completed all **64 lifecycle checkpoints**; its five native logs report successful install/update/uninstall/reinstall/final uninstall without reboot. The fixed installed settings helper saved successfully. [Recorded result](installer/evidence/windows-ci-34822273890.json) retains the exact checkpoint list and source identity.
+
+Unsigned installer: **80,820,456 bytes**, SHA-256 `d03db4b7ce4f2a2273cbc7737dfb87561fe57adb1869d27e0fb4cf9e7bf958f1`. Package manifest SHA-256: `01bf63cfde234fe69c3bae5cbc6cdb83e3308552c9c815a6b71eb8f48f85d7af`. The downloaded EXE hash independently matches both build metadata and the lifecycle result. [Artifact 10339345988](https://github.com/EntreePOS/entree-print/actions/runs/34822273890/artifacts/10339345988) contains the candidate and evidence (14-day retention); local evidence is under `%TEMP%\EntreeInstallerCI-34822273890`.
+
+The scope remains silent installation/storage mechanics on a hosted administrative Windows VM. Printing remained inactive, and retained receipt files were synthetic. This does not close interactive UAC/logon, service-account activation, no-installed-runtime, live network or physical printer recovery checks. No GitHub Release was created.
+
 ## September 14: real hosted Windows installer lifecycle
 
 [Workflow run 34819567689](https://github.com/EntreePOS/entree-print/actions/runs/34819567689) passed from source commit `bb1432be8ed81fd06567da864461b12564ea7674` on a fresh `windows-2025` hosted VM (installer log Windows build 10.0.26100). All **308 .NET tests**, the nine isolated lifecycle cases and **64 recorded installer checkpoints** passed. The checkpoints include repeated phase checks; they are not 64 independent test scenarios. The exact [result JSON](installer/evidence/windows-ci-34819567689.json) is retained in source.
