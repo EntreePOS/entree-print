@@ -31,15 +31,7 @@ public static class ReceiptLayoutEngine
         try
         {
             var portFile = Path.Combine(profile, "DevToolsActivePort");
-            string[] endpoint;
-            while (true)
-            {
-                token.ThrowIfCancellationRequested();
-                if (process.HasExited) throw new InvalidOperationException("The layout browser exited before it was ready.");
-                endpoint = File.Exists(portFile) ? await File.ReadAllLinesAsync(portFile, token) : [];
-                if (endpoint.Length >= 2) break;
-                await Task.Delay(100, token);
-            }
+            var endpoint = await WaitForBrowserEndpointAsync(portFile, () => process.HasExited, token);
             using var socket = new ClientWebSocket();
             await socket.ConnectAsync(new Uri($"ws://127.0.0.1:{endpoint[0]}{endpoint[1]}"), token);
             var nextId = 0;
@@ -115,6 +107,24 @@ public static class ReceiptLayoutEngine
                     await Task.Delay(100, CancellationToken.None);
                 }
             }
+        }
+    }
+
+    internal static async Task<string[]> WaitForBrowserEndpointAsync(string portFile, Func<bool> hasExited, CancellationToken token)
+    {
+        while (true)
+        {
+            token.ThrowIfCancellationRequested();
+            if (hasExited()) throw new InvalidOperationException("The layout browser exited before it was ready.");
+            try
+            {
+                var endpoint = await File.ReadAllLinesAsync(portFile, token);
+                if (endpoint.Length >= 2) return endpoint;
+            }
+            catch (FileNotFoundException) { } // Chromium has not published its endpoint yet.
+            catch (IOException error) when ((error.HResult & 0xffff) is 32 or 33)
+            { } // Chromium is still writing: retry sharing/lock violations within the render deadline.
+            await Task.Delay(100, token);
         }
     }
 }
