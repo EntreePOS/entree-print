@@ -4,7 +4,7 @@
 
 Clear receipt printing for web apps, tablets and desktop applications. Entree Print runs on Windows, provides a JavaScript API, and sends jobs through the installed Windows printer drivers. Entree POS is one client; the plugin does not require its order system or business logic.
 
-**0.0.1-beta is in development.** The current source has passed a physical Chinese/English receipt and QR/Code128 scan check. Installer deployment, LAN transport and failure pilots remain release gates. The [usage guide](https://entreepos.github.io/entree-print/) walks through setup, connection, HTML preview, codes and recovery. A downloadable installer will accompany the release once its checks pass.
+**0.0.1-beta is in development.** The current source has passed a physical Chinese/English receipt and QR/Code128 scan check. Installer deployment, LAN transport and failure pilots remain release gates. The [usage guide](https://entreepos.github.io/entree-print/) walks through setup, connection, HTML preview, codes and recovery. Try editable receipt examples in the [playground](https://entreepos.github.io/entree-print/playground.html). A downloadable installer will accompany the release once its checks pass.
 
 ## What it does
 

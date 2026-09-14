@@ -27,6 +27,7 @@
     setTimeout(() => { button.textContent = 'Copy'; }, 1800);
   }));
   const search = document.querySelector('#topic-search'), links = [...document.querySelectorAll('.contents nav a')];
+  if (!search) return;
   search.addEventListener('input', () => {
     const query = search.value.trim().toLowerCase();
     links.forEach(link => { link.hidden = !`${link.textContent} ${link.dataset.keywords}`.toLowerCase().includes(query); });

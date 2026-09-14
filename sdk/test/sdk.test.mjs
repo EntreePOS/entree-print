@@ -8,6 +8,21 @@ const token = 'test-only-token-'.repeat(3);
 const digest = bytes => createHash('sha256').update(bytes).digest('hex');
 const json = (body, status = 200, headers = {}) => new Response(JSON.stringify(body), { status, headers });
 const rejected = (code, delivery = 'not_sent') => json({ error: { code, message: code, delivery, retryable: false } }, 422);
+test('default browser timers retain their global receiver on connect and disconnect', async t => {
+  const originalSet = globalThis.setTimeout, originalClear = globalThis.clearTimeout;
+  let scheduled = 0, cleared = 0;
+  t.mock.method(globalThis, 'setTimeout', function (...args) {
+    assert.equal(this, globalThis, 'Browser setTimeout requires the Window receiver.');
+    scheduled++; return Reflect.apply(originalSet, globalThis, args);
+  });
+  t.mock.method(globalThis, 'clearTimeout', function (...args) {
+    assert.equal(this, globalThis, 'Browser clearTimeout requires the Window receiver.');
+    cleared++; return Reflect.apply(originalClear, globalThis, args);
+  });
+  const api = createEntreePrint({ token }, { fetch: async () => json({ serviceId:'timer-test', bootId:'boot-1', apiVersion:'0.0.1', printers:[{name:'cashier'}] }) });
+  try { await api.connect(); } finally { api.disconnect(); }
+  assert.ok(scheduled >= 2); assert.ok(cleared >= 2);
+});
 function harness(t, options = {}) {
   const clock = new Clock();
   const calls = []; const jobs = new Map(); let renderCount = 0;

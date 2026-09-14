@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Edit receipt HTML, try QR and barcode examples, preview the Windows layout and copy the Entree Print API code.">
+  <title>Playground | Entree Print</title>
+  <link rel="icon" type="image/png" href="assets/printer.png">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="playground.css">
+  <script src="app.js" defer></script>
+  <script src="playground.mjs" type="module"></script>
+</head>
+<body>
+  <a class="skip" href="#playground">Skip to playground</a>
+  <header class="header">
+    <a class="brand" href="index.html"><img src="assets/printer.png" width="36" height="36" alt=""><span>Entree Print</span></a>
+    <nav aria-label="Primary navigation"><a href="index.html">Guide</a><a href="playground.html" aria-current="page">Playground</a><a class="github" href="https://github.com/EntreePOS/entree-print">GitHub</a><button class="theme" type="button" aria-label="Switch to dark theme">Dark</button></nav>
+  </header>
+  <main id="playground" class="playground">
+    <div class="playground-intro"><p class="eyebrow">Developer playground · 0.0.1-beta</p><h1>Build a receipt. See the result.</h1><p>Edit an example and copy the API code. Connect to your print service to see the actual Windows layout. Previewing uses no paper.</p></div>
+    <details class="connection-panel">
+      <summary>Connect to a print service <span id="connection-badge">Optional</span></summary>
+      <form id="connection-form">
+        <fieldset id="connection-fields" class="connection-fields">
+          <label>Protocol<select id="protocol"><option value="http">HTTP</option><option value="https">HTTPS</option></select></label>
+          <label class="host-field">Server address<input id="host" value="127.0.0.1" required autocomplete="off" spellcheck="false" placeholder="192.168.1.10"></label>
+          <label>Port<input id="port" type="number" value="9779" min="1" max="65535" required></label>
+          <label class="token-field">Access token<input id="token" type="password" autocomplete="off" spellcheck="false" placeholder="From Entree Print settings"></label>
+          <button class="button primary" id="connect" type="submit">Connect</button>
+        </fieldset>
+        <button class="text-button" id="disconnect" type="button" hidden>Disconnect</button>
+      </form>
+      <p class="hint">Use the service computer's address. Add this page's origin, <code id="page-origin"></code>, to the websites permitted in Entree Print settings. The token stays in memory and is sent only to the selected service.</p>
+      <p class="hint">Browser access depends on your network and HTTPS setup. If this hosted page cannot reach an HTTP service, run the playground locally with <code>node site/serve.mjs</code>. Automatic server search is available in Node/Electron.</p>
+      <p id="connection-status" class="feedback" role="status">Not connected. Browser drafts work without a service.</p>
+    </details>
+    <div class="workbench">
+      <section class="editor-panel" aria-labelledby="editor-title">
+        <div class="panel-heading"><h2 id="editor-title">Receipt content</h2><label class="preset-label">Example<select id="preset"><option value="receipt">Cashier receipt</option><option value="kitchen">Kitchen ticket</option><option value="codes">QR + barcode</option></select></label></div>
+        <p class="hint" id="editor-help">A JSON array of HTML, QR or barcode blocks. Edit the values below.</p>
+        <label for="content" class="sr-only">Receipt content JSON</label>
+        <textarea id="content" spellcheck="false" aria-describedby="editor-help validation" wrap="soft"></textarea>
+        <p id="validation" class="feedback" role="status"></p>
+        <div class="receipt-options">
+          <label>Printer<select id="printer" disabled><option value="cashier">cashier (example)</option></select></label>
+          <label>Printable width<select id="width"><option value="auto">Driver default</option><option value="72">72 mm</option><option value="58">58 mm</option><option value="48">48 mm</option></select></label>
+        </div>
+        <p class="hint">An 80 mm roll often has a 72 mm printable area. The driver decides the maximum; an explicit width only narrows it.</p>
+        <div class="actions"><button id="render" class="button primary" type="button" disabled>Render with service</button><button id="reset" class="button" type="button">Reset example</button></div>
+      </section>
+      <section class="preview-panel" aria-labelledby="preview-title">
+        <div class="panel-heading"><h2 id="preview-title">Preview</h2><span class="preview-kind" id="preview-kind">Browser draft</span></div>
+        <p id="preview-note" class="hint">Approximate HTML layout at 72 mm. Connect for the driver's exact layout and scannable codes.</p>
+        <div class="preview-mat"><iframe id="preview" title="Receipt preview" sandbox="" referrerpolicy="no-referrer"></iframe></div>
+        <p id="render-status" class="feedback" role="status">Edit the content to update the browser draft.</p>
+        <button id="download" class="text-button" type="button" disabled>Download rendered HTML</button>
+      </section>
+    </div>
+    <section class="api-output" aria-labelledby="code-title">
+      <div class="panel-heading"><h2 id="code-title">Use it in your app</h2><span class="hint">Updates as you edit</span></div>
+      <p class="hint">Connection returns the print library. Get printers from that library, render the ticket, then print it on your operator's action. This playground only previews; the code below shows how to submit a print.</p>
+      <div class="code-panel"><div class="code-toolbar"><span>JavaScript · browser SDK</span><button class="copy" type="button" aria-label="Copy playground code">Copy</button></div><pre tabindex="0"><code id="api-code"></code></pre></div>
+      <p class="hint">Supply <code>settings.printServiceToken</code>, a sandboxed <code>previewFrame</code>, and a persisted <code>savedIntent.id</code> for each intended print. Keep that ID for retries. <a href="index.html#outbox">See durable client storage</a>.</p>
+    </section>
+    <noscript><p>This playground needs JavaScript. You can still read the <a href="index.html">usage guide</a>.</p></noscript>
+    <p id="copy-status" class="sr-only" role="status"></p>
+  </main>
+  <footer><span>Entree Print</span><p>Windows printing for your application.</p><a href="index.html#api">API reference</a><a href="index.html#release">Release status</a></footer>
+</body>
+</html>

@@ -64,7 +64,8 @@ function settings(previous, options) {
 
 export function createEntreePrint(options = {}, dependencies = {}) {
   const io = { fetch: (...args) => globalThis.fetch(...args), crypto: globalThis.crypto,
-    now: () => Date.now(), setTimeout: globalThis.setTimeout, clearTimeout: globalThis.clearTimeout, ...dependencies };
+    now: () => Date.now(), setTimeout: (...args) => globalThis.setTimeout(...args),
+    clearTimeout: (...args) => globalThis.clearTimeout(...args), ...dependencies };
   const listeners = new Set();
   const sessions = new Set();
   const monitors = new Map();
