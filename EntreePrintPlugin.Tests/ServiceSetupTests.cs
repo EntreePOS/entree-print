@@ -199,9 +199,11 @@ public sealed class ServiceSetupTests
     {
         var names = new[] { "Get-CimInstance", "Get-Service", "Stop-Service", "Start-Service", "New-Service",
             "Get-NetFirewallRule", "Remove-NetFirewallRule", "New-NetFirewallRule", "Start-Sleep" };
+        // Cold Windows module discovery on a hosted runner can exceed 20 seconds.
+        // Use the application's bounded deadline; timeout behavior has its own test.
         var result = ServiceCommand.RunPowerShell(
             "Get-Command " + string.Join(",", names) + " -ErrorAction Stop | ForEach-Object { [Console]::WriteLine($_.Name) }\n" +
-            "[Console]::WriteLine((Get-Command sc.exe -CommandType Application -ErrorAction Stop).Source)", 20000);
+            "[Console]::WriteLine((Get-Command sc.exe -CommandType Application -ErrorAction Stop).Source)");
         Assert.Equal(0, result.ExitCode);
         Assert.Equal("", result.Error);
         foreach (var name in names) Assert.Contains(name, result.Output);
