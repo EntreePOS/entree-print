@@ -148,16 +148,18 @@ const originalPreview = await print.getJobRender(job.id);</code></pre></div>
           <h3>Keep a print monitor up to date</h3>
           <p>Subscribe to job and printer changes. The SDK resumes missed updates after a disconnect and refreshes current state when older history has expired. Use <code>sync: live</code> to show that the monitor has caught up.</p>
           <div class="code-panel" data-example="events"><div class="code-toolbar"><span>JavaScript</span><button class="copy" type="button" aria-label="Copy events example">Copy</button></div><pre tabindex="0"><code>const subscription = EntreePrint.subscribe(event =&gt; {
+  const { serviceId, data } = event;
   if (event.type === 'sync') {
-    if (event.data.printers) {
-      monitor.replacePrinters(event.serviceId, event.data.printers);
+    if (data.printers) {
+      monitor.replacePrinters(serviceId, data.printers);
     }
-    monitor.setSyncState(event.serviceId, event.data.state);
+    monitor.setSyncState(serviceId, data.state);
   }
-  if (event.type === 'job') monitor.updateJob(event.serviceId, event.data);
+  if (event.type === 'job') monitor.updateJob(serviceId, data);
   if (event.type === 'printer') {
-    if (event.data.removed) monitor.removePrinter(event.serviceId, event.entityId);
-    else monitor.updatePrinter(event.serviceId, event.data);
+    if (data.removed) {
+      monitor.removePrinter(serviceId, event.entityId);
+    } else monitor.updatePrinter(serviceId, data);
   }
 }, { events: ['job', 'printer'] });
 
