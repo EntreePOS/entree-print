@@ -8,9 +8,12 @@ namespace EntreePrintTray;
 
 internal static class SettingsWriter
 {
+    internal const int MaximumRequestBytes = 1_000_000;
+
     internal static async Task SaveAsync(PluginConfig config, string path)
     {
         var bytes = config.ToValidatedJson(); // Validate before asking Windows for elevation.
+        if (bytes.Length > MaximumRequestBytes) throw new ArgumentException("The settings request exceeds 1 MB.");
         if (!string.Equals(Path.GetFullPath(path), PluginConfig.DefaultPath, StringComparison.OrdinalIgnoreCase) || ProtectedStorage.IsAdministrator())
         {
             config.Save(path); return;
@@ -61,11 +64,8 @@ internal static class SettingsWriter
             else
             {
                 if (args.Length != 2) throw new ArgumentException("A settings request is required.");
-                var request = new FileInfo(Path.GetFullPath(args[1]));
-                if ((request.Attributes & FileAttributes.ReparsePoint) != 0 || request.Length > 1_000_000)
-                    throw new ArgumentException("The settings request must be a regular file under 1 MB.");
                 // The caller supplies data only, never a privileged output path or command.
-                PluginConfig.Load(request.FullName).Save(PluginConfig.DefaultPath);
+                ReadRequest(args[1]).Save(PluginConfig.DefaultPath);
             }
         }
         catch (Exception error)
@@ -76,5 +76,28 @@ internal static class SettingsWriter
                     MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
         return true;
+    }
+
+    internal static PluginConfig ReadRequest(string path)
+    {
+        var fullPath = Path.GetFullPath(path);
+        if ((File.GetAttributes(fullPath) & (FileAttributes.ReparsePoint | FileAttributes.Directory)) != 0)
+            throw new ArgumentException("The settings request must be a regular file.");
+        // Hold one handle without write/delete sharing through the complete read.
+        // Never reopen the pathname or treat a missing request as default settings.
+        using var file = new FileStream(fullPath, FileMode.Open, FileAccess.Read, FileShare.Read);
+        if ((File.GetAttributes(file.SafeFileHandle) & (FileAttributes.ReparsePoint | FileAttributes.Directory)) != 0)
+            throw new ArgumentException("The settings request must be a regular file.");
+        return ReadRequest(file);
+    }
+
+    internal static PluginConfig ReadRequest(Stream file)
+    {
+        if (file.Length > MaximumRequestBytes) throw new ArgumentException("The settings request exceeds 1 MB.");
+        // Bound actual bytes as well as Length: never trust an earlier size observation.
+        var bytes = new byte[MaximumRequestBytes + 1];
+        var count = file.ReadAtLeast(bytes, bytes.Length, throwOnEndOfStream: false);
+        if (count > MaximumRequestBytes) throw new ArgumentException("The settings request exceeds 1 MB.");
+        return PluginConfig.ParseRequest(bytes.AsSpan(0, count));
     }
 }

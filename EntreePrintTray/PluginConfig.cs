@@ -92,6 +92,10 @@ public sealed record PluginConfig
 
     internal byte[] ToValidatedJson() => JsonSerializer.SerializeToUtf8Bytes(Validate(), JsonOptions);
 
+    internal static PluginConfig ParseRequest(ReadOnlySpan<byte> json) =>
+        (JsonSerializer.Deserialize<PluginConfig>(json, JsonOptions)
+            ?? throw new JsonException("The settings request must contain a settings object.")).Validate();
+
     internal static void InitializeInstalledStorage()
     {
         if (!ProtectedStorage.IsAdministrator()) throw new UnauthorizedAccessException("Administrator approval is required to save service settings.");
