@@ -360,7 +360,10 @@ export function createEntreePrint(options = {}, dependencies = {}) {
           if (reprintOf !== undefined)
             fail('JOB_OWNER_REQUIRED', 'Connect directly to the original job owner to request a reprint.');
           const body = JSON.parse(new TextDecoder().decode(wire.bytes));
-          verifyBackupDestination(this, body.printer, body.type !== 'print' || !!trailingOptions(body.after));
+          const destination = verifyBackupDestination(this, body.printer, body.type !== 'print' || !!trailingOptions(body.after));
+          const observed = await this.read('/api/printers?refresh=true');
+          if (verifyBackupDestination(this, body.printer, false, observed) !== destination)
+            fail('PRINTER_DESTINATION_CHANGED', 'The backup queue now points to a different destination. Reconnect and review the Windows printer configuration.');
         }
         await this.ready();
         for (let attempt = 0; ; attempt++) {
@@ -560,12 +563,14 @@ export function createEntreePrint(options = {}, dependencies = {}) {
     return copy;
   }
 
-  function verifyBackupDestination(session, printerName, deviceCommand = false) {
+  function verifyBackupDestination(session, printerName, deviceCommand = false, inventory = session.info?.printers) {
     if (!session.nodeSelection?.usedBackup) return;
     if (deviceCommand) fail('DEVICE_OWNER_REQUIRED', 'Connect directly to the device owner for drawer, beep, cut or raw commands.');
-    const printer = session.info?.printers.find(item => item.name === printerName);
-    if (printer?.connection?.type !== 'network' || typeof printer.connection.host !== 'string' || !printer.connection.host)
-      fail('PRINTER_OWNER_REQUIRED', 'Backup connections can print only to identified network queues. Connect directly to the USB or unknown printer owner.');
+    const matches = Array.isArray(inventory) ? inventory.filter(item => item?.name === printerName) : [];
+    const printer = matches.length === 1 ? matches[0] : null;
+    if (printer?.connection?.type !== 'network' || !/^tcpip:[0-9a-f]{64}$/.test(printer.connection.destination?.id ?? '') || printer.status?.stale !== false)
+      fail('PRINTER_OWNER_REQUIRED', 'Backup printing requires a fresh, directly configured Windows TCP/IP destination. Connect directly to the USB, shared or unknown printer owner.');
+    return printer.connection.destination.id;
   }
 
   class Ticket {

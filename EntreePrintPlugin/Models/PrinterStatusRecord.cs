@@ -18,6 +18,11 @@ public sealed record PrinterStatusRecord
     public string PortName { get; init; } = "";
     public string HostAddress { get; init; } = "";
     public int? PortNumber { get; init; }
+    public int? QueueType { get; init; }
+    public string ConnectionServer { get; init; } = "";
+    public string PortMonitor { get; init; } = "";
+    public int? PortProtocol { get; init; }
+    public string LprQueueName { get; init; } = "";
     public string RawPrinterStatus { get; init; } = "";
     public string StatusSource { get; init; } = "windows";
     public int? PrinterState { get; init; }

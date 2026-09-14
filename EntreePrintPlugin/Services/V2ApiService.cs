@@ -66,7 +66,8 @@ public sealed class V2ApiService(PluginSettings settings, ServiceIdentity identi
         return new
         {
             name = printer.Name, isDefault = printer.Default,
-            connection = new { type = printer.PortName.StartsWith("USB", StringComparison.OrdinalIgnoreCase) ? "usb" : !string.IsNullOrEmpty(printer.HostAddress) ? "network" : "unknown", host = printer.HostAddress },
+            connection = new { type = printer.PortName.StartsWith("USB", StringComparison.OrdinalIgnoreCase) ? "usb" : !string.IsNullOrEmpty(printer.HostAddress) ? "network" : "unknown",
+                host = printer.HostAddress, destination = NetworkPrinterDestination.From(printer) },
             settings = new { source = "windows_driver" },
             status = StatusView(settings, printer)
         };

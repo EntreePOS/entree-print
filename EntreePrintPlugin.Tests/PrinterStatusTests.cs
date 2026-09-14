@@ -11,15 +11,19 @@ public sealed class PrinterStatusTests
         // Exercise the real hidden PowerShell/stdout boundary with a read-only fixture.
         var json = await PrinterStatusService.RunPowerShellAsync("""
             [pscustomobject]@{
-                printers = @([pscustomobject]@{ Name = '厨房 · 收銀 · café'; PrinterStatus = 0; PortName = 'IP_192.0.2.10' })
+                printers = @([pscustomobject]@{ Name = '厨房 · 收銀 · café'; PrinterStatus = 0; PortName = 'IP_192.0.2.10'; Type = 0; ComputerName = '' })
                 cim = @([pscustomobject]@{ Name = '厨房 · 收銀 · café'; Default = $true; DetectedErrorState = 0 })
-                ports = @([pscustomobject]@{ Name = 'IP_192.0.2.10'; PrinterHostAddress = '192.0.2.10'; PortNumber = 9100 })
+                ports = @([pscustomobject]@{ Name = 'IP_192.0.2.10'; PrinterHostAddress = '192.0.2.10'; PortNumber = 9100; Protocol = 1; PortMonitor = 'TCPMON.DLL'; LprQueueName = '' })
             } | ConvertTo-Json -Compress -Depth 5
             """, CancellationToken.None);
         var printer = Assert.Single(PrinterStatusService.ParseStatusPayload(json));
         Assert.Equal("厨房 · 收銀 · café", printer.Name);
         Assert.Equal("192.0.2.10", printer.HostAddress);
         Assert.Equal(9100, printer.PortNumber);
+        Assert.Equal(0, printer.QueueType);
+        Assert.Equal(1, printer.PortProtocol);
+        Assert.Equal("TCPMON.DLL", printer.PortMonitor);
+        Assert.Equal("192.0.2.10", Models.NetworkPrinterDestination.From(printer)!.Host);
         Assert.Equal("windows", printer.StatusSource);
         Assert.True(printer.Default);
         Assert.Null(printer.PaperOut);

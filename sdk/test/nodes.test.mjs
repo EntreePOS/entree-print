@@ -8,6 +8,9 @@ import { Store } from './outbox-store.mjs';
 const json = (body, status = 200, headers = {}) => new Response(JSON.stringify(body), { status, headers });
 const node = name => ({ ip:name, serviceId:name, port:9779, token:`${name}-credential-`.repeat(4) });
 const nodes = () => [node('primary'), node('backup')];
+const networkPrinter = () => ({name:'Kitchen',status:{stale:false},connection:{type:'network',host:'192.168.1.80',
+  destination:{id:'tcpip:'+createHash('sha256').update(JSON.stringify(['windows-tcpip-v1','raw','192.168.1.80',9100,null])).digest('hex'),
+    protocol:'raw',host:'192.168.1.80',port:9100,queue:null}}});
 function harness(t, outboxStorage) {
   const clock = new Clock(), calls = [], jobs = new Map();
   const state = { primary:{}, backup:{} };
@@ -22,9 +25,9 @@ function harness(t, outboxStorage) {
       if (address.pathname === '/api/connection') {
         if (server.pending) return server.pending;
         return json({serviceId:server.identity ?? name, bootId:'boot', apiVersion:'0.0.1', printers:server.empty ? [] : server.printers ??
-          [{name:'Kitchen',connection:{type:'network',host:'192.168.1.80'}},{name:'cashier',connection:{type:'usb',host:null}}]});
+          [networkPrinter(),{name:'cashier',connection:{type:'usb',host:null}}]});
       }
-      if (address.pathname === '/api/printers') return json([{name:'Kitchen'},{name:'cashier'}]);
+      if (address.pathname === '/api/printers') return json(server.printers ?? [networkPrinter(),{name:'cashier',connection:{type:'usb'}}]);
       if (address.pathname === '/api/heartbeat') return json({serviceId:name,bootId:'boot',requestId:address.searchParams.get('requestId')});
       if (address.pathname === '/api/jobs/lookup') return json(jobs.get(name + ':' + address.searchParams.get('idempotencyKey')));
       const digest = createHash('sha256').update(init.body).digest('hex');
@@ -54,7 +57,9 @@ test('configured connection selects the primary without contacting unused nodes'
   assert.equal(print.connection.printers,undefined);
   assert.deepEqual(print.connection.nodeSelection.nodes.map(item => item.state),['selected','not_checked']);
   assert.deepEqual(calls.map(item => item.name),['primary']);
-  assert.deepEqual(await print.getPrinters(),[{name:'Kitchen'},{name:'cashier'}]);
+  const printers = await print.getPrinters();
+  assert.deepEqual(printers.map(printer => printer.name),['Kitchen','cashier']);
+  assert.equal(printers[0].connection.destination.id,networkPrinter().connection.destination.id);
 });
 
 test('connection falls back with each node credential and returns isolated diagnostic snapshots', async t => {
@@ -148,6 +153,44 @@ test('backup connection cannot move USB receipts or device commands; explicit ow
   const direct = await api.connect(node('backup'));
   assert.equal(direct.connection.nodeSelection,undefined);
   assert.equal((await direct.target('cashier').openDrawer({idempotencyKey:'explicit-device'})).serviceId,'backup');
+});
+
+for (const fault of ['missing-destination','invalid-id','stale','missing-status']) test(`backup rejects ${fault} before preparing or submitting`, async t => {
+  const {api,state,calls} = harness(t); state.primary.offline = true;
+  const printer = networkPrinter();
+  if (fault === 'missing-destination') printer.connection.destination = null;
+  if (fault === 'invalid-id') printer.connection.destination.id = 'not-an-endpoint';
+  if (fault === 'stale') printer.status.stale = true;
+  if (fault === 'missing-status') delete printer.status;
+  state.backup.printers = [printer];
+  const print = await api.connect({nodes:nodes()});
+  await assert.rejects(print.target('Kitchen').setContent('<p>Receipt</p>').print(),{code:'PRINTER_OWNER_REQUIRED'});
+  assert.equal(calls.filter(call => call.body).length,0);
+  const direct = await api.connect(node('backup'));
+  assert.equal((await direct.target('Kitchen').setContent('<p>Explicit owner</p>').print()).serviceId,'backup');
+});
+
+for (const change of ['destination','duplicate','missing']) test(`backup refresh rejects a ${change} queue before a job POST`, async t => {
+  const {api,state,calls,jobs} = harness(t); state.primary.offline = true;
+  const print = await api.connect({nodes:nodes()});
+  const ticket = print.target('Kitchen').setContent('<p>Reviewed</p>'); await ticket.render();
+  const other = networkPrinter(); other.connection.destination.id = 'tcpip:'+'0'.repeat(64);
+  state.backup.printers = change === 'destination' ? [other] : change === 'duplicate' ? [networkPrinter(),networkPrinter()] : [];
+  await assert.rejects(ticket.print(), {code:change === 'destination' ? 'PRINTER_DESTINATION_CHANGED' : 'PRINTER_OWNER_REQUIRED',delivery:'not_sent'});
+  assert.equal(calls.filter(call => call.path === '/api/printers').length,1);
+  assert.equal(calls.filter(call => call.path === '/api/jobs').length,0); assert.equal(jobs.size,0);
+});
+
+test('fresh backup destination changes preserve an earlier lost acknowledgement', async t => {
+  const {api,state,calls} = harness(t); state.primary.offline = true;
+  const print = await api.connect({nodes:nodes()});
+  const ticket = print.target('Kitchen').setContent('<p>Retained</p>'); state.backup.loseAck = true;
+  await assert.rejects(ticket.print({idempotencyKey:'retained'}),{delivery:'unknown'});
+  const changed = networkPrinter(); changed.connection.destination.id = 'tcpip:'+'0'.repeat(64);
+  state.backup.printers = [changed];
+  await assert.rejects(ticket.print({idempotencyKey:'retained'}),{code:'PRINTER_DESTINATION_CHANGED',delivery:'unknown'});
+  assert.equal(calls.filter(call => call.path === '/api/jobs').length,1);
+  assert.equal(calls.filter(call => call.path === '/api/renders').length,1);
 });
 
 test('changed backup eligibility cannot erase an earlier possible receipt acceptance', async t => {

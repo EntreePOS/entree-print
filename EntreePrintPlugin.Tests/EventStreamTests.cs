@@ -70,12 +70,14 @@ public sealed class EventStreamTests
         await using var stream = await Reader.Open(host,null);
         await stream.Next();
         Assert.Equal("caught-up",(await stream.Next()).EventType);
-        host.Events.Publish("printer",new PrinterStatusRecord { Name="厨房",Status="offline",Offline=true,PaperOut=null,Stale=false,PortName="IP_queue",HostAddress="192.168.1.80" });
+        var observed = NetworkPrinterDestinationTests.Direct with { Status="offline",Offline=true,PaperOut=null,Stale=false };
+        host.Events.Publish("printer",observed);
         var entry = await stream.Next();
         using var data = JsonDocument.Parse(entry.Data);
         var printer = data.RootElement.GetProperty("data");
         Assert.Equal("printer",entry.EventType); Assert.Equal("厨房",printer.GetProperty("name").GetString());
         Assert.Equal("network",printer.GetProperty("connection").GetProperty("type").GetString());
+        Assert.Equal(NetworkPrinterDestination.From(observed)!.Id,printer.GetProperty("connection").GetProperty("destination").GetProperty("id").GetString());
         Assert.True(printer.GetProperty("status").GetProperty("offline").GetBoolean());
         Assert.Equal(JsonValueKind.Null,printer.GetProperty("status").GetProperty("paperOut").ValueKind);
         Assert.Equal(0,host.Backend.Calls);

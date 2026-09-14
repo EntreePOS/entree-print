@@ -121,9 +121,9 @@ public sealed class PrinterStatusService(
 
         var script = """
 $ErrorActionPreference = 'Stop'
-$printers = Get-Printer | Select-Object Name,PrinterStatus,WorkOffline,PrinterState,DriverName,PortName
+$printers = Get-Printer | Select-Object Name,PrinterStatus,WorkOffline,PrinterState,DriverName,PortName,Type,ComputerName
 $cim = Get-CimInstance Win32_Printer | Select-Object Name,Default,PrinterStatus,DetectedErrorState,ExtendedPrinterStatus,PrinterState,WorkOffline,DriverName,PortName
-$ports = Get-PrinterPort | Select-Object Name,PrinterHostAddress,PortNumber
+$ports = Get-PrinterPort | Select-Object Name,PrinterHostAddress,PortNumber,PortMonitor,Protocol,LprQueueName
 [pscustomobject]@{ printers = $printers; cim = $cim; ports = $ports } | ConvertTo-Json -Compress -Depth 5
 """;
 
@@ -252,6 +252,11 @@ $ports = Get-PrinterPort | Select-Object Name,PrinterHostAddress,PortNumber
             PortName = FirstNonEmpty(ReadString(printer, "PortName"), ReadString(cim, "PortName")),
             HostAddress = ReadString(port, "PrinterHostAddress"),
             PortNumber = ReadInt(port, "PortNumber"),
+            QueueType = nativeStatus ? ReadInt(printer, "Type") : null,
+            ConnectionServer = ReadString(printer, "ComputerName"),
+            PortMonitor = ReadString(port, "PortMonitor"),
+            PortProtocol = ReadInt(port, "Protocol"),
+            LprQueueName = ReadString(port, "LprQueueName"),
             RawPrinterStatus = rawPrinterStatus,
             PrinterState = state,
             DetectedErrorState = detectedErrorState,
