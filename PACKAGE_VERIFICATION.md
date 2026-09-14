@@ -1,5 +1,15 @@
 # Development package verification — 2026-09-13
 
+## September 14: HTTPS installer candidate
+
+[Run 34834821106](https://github.com/EntreePOS/entree-print/actions/runs/34834821106) passed from `911ee37c135d270023ee86fcc74b45c4dcc20717`. Downloaded TRX confirms **386 .NET tests executed and passed**, with no failures or skips. Workflow logs confirm **98 core SDK tests, nine native SQLite tests and nine isolated installer checks**. All **64 hosted installer lifecycle checkpoints** passed, including permissions over **739 installed entries**. Five native logs confirm successful install/update/uninstall/reinstall/final uninstall, without reboot. The [recorded result](installer/evidence/windows-ci-34834821106.json) retains the exact source, checks and digest.
+
+The unsigned EXE is **80,851,005 bytes**, SHA-256 `17f801364d9eac6f11df7e83f714c6970815d774cbfaa404de5e0302ffb6ef46`. Package manifest SHA-256 is `a551f00c972fa3d498172e3159a14a399d0df922ab23957e98d7c677b1098a82`. The downloaded EXE hash matches build metadata, SHA256SUMS and lifecycle evidence. [Artifact 10343960615](https://github.com/EntreePOS/entree-print/actions/runs/34834821106/artifacts/10343960615) retains the candidate and evidence for 14 days; local files are under `%TEMP%\EntreeInstallerCI-34834821106`.
+
+This candidate includes optional certificate-store HTTPS, protocol-aware discovery/recovery, separated HTTP/HTTPS monitors and the localhost playground fallback. The first HTTPS run (34834324901) passed all TLS cases but hit an existing command-discovery fixture's 20-second deadline; this candidate uses the application's bounded 90-second deadline and retains the dedicated timeout test. The public guide/playground deployed successfully from `a0eb732` and the playground was checked after reloading in the browser.
+
+TLS tests use real Kestrel over memory transports and verify successful encryption plus wrong-name/untrusted-issuer rejection. Hosted installer checks keep printing inactive. Neither establishes installed service private-key access, interactive UAC/logon, client certificate trust, live LAN/physical recovery or automatic printing failover. No GitHub Release was created. Subsequent edits record evidence and current host status only.
+
 ## September 14: ordered actions and Chromium startup candidate
 
 [Run 34831638120](https://github.com/EntreePOS/entree-print/actions/runs/34831638120) passed from `02110129a19bd07b4ef97ee5de43abeb4d601542`. Downloaded TRX confirms **374 .NET tests executed and passed**, with no failures or skips. Workflow logs confirm **95 core SDK and nine native SQLite tests**, plus nine isolated installer checks. All **64 hosted installer lifecycle checkpoints** passed, including permissions over **739 installed entries**. All five native logs report successful installation/update/uninstall/reinstall/final uninstall without reboot. The [recorded result](installer/evidence/windows-ci-34831638120.json) retains the source, checks and installer digest.
