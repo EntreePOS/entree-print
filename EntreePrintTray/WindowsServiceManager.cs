@@ -1,6 +1,3 @@
-using System.Diagnostics;
-using System.Text;
-
 namespace EntreePrintTray;
 
 public sealed class WindowsServiceManager
@@ -43,17 +40,35 @@ public sealed class WindowsServiceManager
         ];
     }
 
-    public void Install(PluginConfig config)
+    public void Install() => ServiceCommand.RunElevated("install");
+    public void Uninstall() => ServiceCommand.RunElevated("uninstall");
+    public void Start() => ServiceCommand.RunElevated("start");
+    public void Stop() => ServiceCommand.RunElevated("stop");
+    public void Restart() => ServiceCommand.RunElevated("restart");
+
+    internal string BuildServiceScript(string action, string exePath, PluginConfig? config)
     {
-        var exePath = ResolveServiceExe();
-        if (!File.Exists(exePath))
+        ServiceCommand.ValidateAction(action);
+        var operation = action switch
         {
-            throw new FileNotFoundException("Service executable was not found. Publish the service first or set ENTREE_PRINT_SERVICE_EXE.", exePath);
-        }
-
-        EntreePrint.Security.ProtectedStorage.AssertTrustedPath(exePath);
-
-        RunElevatedScript(BuildInstallScript(exePath, config));
+            "install" => BuildInstallScript(exePath, config ?? throw new ArgumentNullException(nameof(config))),
+            "start" => BuildStartScript(config),
+            "restart" => BuildRestartScript(config),
+            "stop" => Lines("Stop-Service -Name $serviceName -Force -ErrorAction Stop",
+                "(Get-Service -Name $serviceName -ErrorAction Stop).WaitForStatus('Stopped', [TimeSpan]::FromSeconds(20))"),
+            _ => BuildUninstallScript()
+        };
+        // Check the SCM command before any service or firewall mutation. An extra
+        // argument or an unquoted/foreign executable is not this installation.
+        return Lines(
+            $"$serviceName = '{ServiceName}'",
+            $"$expectedCommand = '\"{EscapePowerShellSingleQuoted(exePath)}\"'",
+            "$registered = Get-CimInstance -ClassName Win32_Service -Filter \"Name='$serviceName'\" -ErrorAction Stop",
+            "if ($registered -and -not [string]::Equals(([string]$registered.PathName).Trim(), $expectedCommand, [StringComparison]::OrdinalIgnoreCase)) { throw 'The print service belongs to another installation or has an unexpected command. No changes were made.' }",
+            action == "install" ? "" : action == "uninstall"
+                ? "if (-not $registered) { return }"
+                : "if (-not $registered) { throw \"Service $serviceName is not installed.\" }",
+            operation);
     }
 
     public string BuildInstallScript(string exePath, PluginConfig config)
@@ -74,16 +89,16 @@ public sealed class WindowsServiceManager
             "  Start-Sleep -Seconds 2",
             "}",
             "New-Service -Name $serviceName -BinaryPathName ('\"' + $exePath + '\"') -StartupType Automatic -DisplayName $displayName -ErrorAction Stop | Out-Null",
-            "sc.exe description $serviceName \"Local LAN HTML print plugin for ENTREE POS tablet clients.\" | Out-Null",
+            "sc.exe description $serviceName \"Entree Print: Windows printing for local applications.\" | Out-Null",
             "if ($LASTEXITCODE -ne 0) { throw \"Could not configure service (Windows error $LASTEXITCODE).\" }",
             BuildFirewallScript(config),
             "Start-Service -Name $serviceName -ErrorAction Stop",
             "(Get-Service -Name $serviceName -ErrorAction Stop).WaitForStatus('Running', [TimeSpan]::FromSeconds(20))");
     }
 
-    public void Uninstall()
+    private static string BuildUninstallScript()
     {
-        RunElevatedScript(Lines(
+        return Lines(
             "$ErrorActionPreference = \"Stop\"",
             $"$serviceName = \"{EscapePowerShell(ServiceName)}\"",
             "$existing = Get-Service -Name $serviceName -ErrorAction SilentlyContinue",
@@ -94,24 +109,7 @@ public sealed class WindowsServiceManager
             "  }",
             "  sc.exe delete $serviceName | Out-Null",
             "  if ($LASTEXITCODE -ne 0) { throw \"Could not remove service (Windows error $LASTEXITCODE).\" }",
-            "}"));
-    }
-
-    public void Start(PluginConfig? config = null)
-    {
-        RunElevatedScript(BuildStartScript(config));
-    }
-
-    public void Stop()
-    {
-        RunElevatedScript(Lines(
-            $"Stop-Service -Name '{ServiceName}' -Force -ErrorAction Stop",
-            $"(Get-Service -Name '{ServiceName}' -ErrorAction Stop).WaitForStatus('Stopped', [TimeSpan]::FromSeconds(20))"));
-    }
-
-    public void Restart(PluginConfig? config = null)
-    {
-        RunElevatedScript(BuildRestartScript(config));
+            "}");
     }
 
     public bool IsInstalled()
@@ -126,29 +124,11 @@ public sealed class WindowsServiceManager
 
     private static string? QueryServiceStatus()
     {
-        using var process = Process.Start(new ProcessStartInfo
-        {
-            FileName = "powershell.exe",
-            Arguments = $"-NoProfile -NonInteractive -Command \"try {{ Get-Service -ErrorAction Stop | Where-Object Name -eq '{ServiceName}' | ForEach-Object {{ Write-Output $_.Status }}; exit 0 }} catch {{ exit 2 }}\"",
-            RedirectStandardOutput = true,
-            UseShellExecute = false,
-            CreateNoWindow = true
-        });
-
-        if (process is null)
-        {
-            throw new InvalidOperationException("Could not launch the Windows service status check.");
-        }
-
-        var output = process.StandardOutput.ReadToEndAsync();
-        if (!process.WaitForExit(5000))
-        {
-            process.Kill(entireProcessTree: true);
-            throw new TimeoutException("Windows did not respond when checking the print service.");
-        }
-        if (process.ExitCode != 0)
+        var result = ServiceCommand.RunPowerShell(
+            $"Get-Service -ErrorAction Stop | Where-Object Name -eq '{ServiceName}' | ForEach-Object {{ Write-Output $_.Status }}", 5000);
+        if (result.ExitCode != 0)
             throw new InvalidOperationException("Windows could not check the print service status.");
-        var status = output.GetAwaiter().GetResult().Trim();
+        var status = result.Output.Trim();
         return string.IsNullOrEmpty(status) ? null : status;
     }
 
@@ -205,51 +185,6 @@ public sealed class WindowsServiceManager
     {
         return config.IsLanAccessible;
     }
-
-    private static void RunElevatedScript(string script)
-    {
-        var scriptPath = Path.Combine(Path.GetTempPath(), $"entree-print-service-{Guid.NewGuid():N}.ps1");
-        var errorPath = Path.ChangeExtension(scriptPath, ".error.txt");
-        try
-        {
-            File.WriteAllText(scriptPath, BuildCheckedScript(script, errorPath), Encoding.UTF8);
-            using var process = Process.Start(new ProcessStartInfo
-            {
-                FileName = "powershell.exe",
-                Arguments = $"-NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"{scriptPath}\"",
-                UseShellExecute = true,
-                Verb = "runas",
-                WindowStyle = ProcessWindowStyle.Hidden
-            }) ?? throw new InvalidOperationException("Could not launch Windows service setup.");
-            process.WaitForExit();
-            if (process.ExitCode != 0)
-            {
-                var detail = File.Exists(errorPath) ? File.ReadAllText(errorPath).Trim() : "";
-                throw new InvalidOperationException(string.IsNullOrWhiteSpace(detail)
-                    ? $"Windows service setup failed (exit code {process.ExitCode})."
-                    : detail);
-            }
-        }
-        finally
-        {
-            foreach (var path in new[] { scriptPath, errorPath })
-            {
-                try { File.Delete(path); }
-                catch (IOException) { }
-                catch (UnauthorizedAccessException) { }
-            }
-        }
-    }
-
-    internal static string BuildCheckedScript(string script, string errorPath) => Lines(
-        "$ErrorActionPreference = 'Stop'",
-        "try {",
-        script,
-        "  exit 0",
-        "} catch {",
-        $"  [IO.File]::WriteAllText('{EscapePowerShellSingleQuoted(errorPath)}', $_.Exception.Message, [Text.Encoding]::UTF8)",
-        "  exit 1",
-        "}");
 
     private static string Lines(params string[] lines)
     {

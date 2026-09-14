@@ -1,5 +1,15 @@
 # Development package verification — 2026-09-13
 
+## September 14: fixed elevated service commands
+
+The tray now requests `--service-action install|start|stop|restart|uninstall` on its own trusted executable. The elevated process resolves only its adjacent installed service and the protected default configuration. It constructs commands internally, with no user-temporary script or error-output file. Service ownership must exactly match the quoted executable before any service/firewall mutation. System PowerShell runs without profiles, with system-only command/module search, UTF-16LE encoded command text, UTF-8 output and a 90-second deadline. Timeout reports an uncertain service state instead of inviting automatic retry.
+
+All **308 .NET tests** pass (`%TEMP%\EntreeServiceCommandTests.log`). Service fixtures execute the production shell wrapper with Windows mutations replaced: all five owned actions succeed; all five reject foreign, unquoted and extra-argument commands; failed ownership lookup stops all work; missing service rules, native/firewall failures, Chinese/literal paths, module search and timeout behavior are covered. Read-only command discovery also confirms that the required real Windows cmdlets and system sc.exe resolve with the restricted search path. An initial fixture caught PowerShell expanding its module search during startup; the final wrapper resets the module path before executing commands. These checks do not perform UAC, install a service or change firewall rules.
+
+A read-only Windows inventory still reports the existing prototype running as PID 6252 at the original workspace `dist\EntreePrintPlugin\service\EntreePrintPlugin.exe` path. No live upgrade or service operation was attempted. Installed helper startup, clean-host permissions, alternate administrator approval and service-account deployment remain required.
+
+PowerShell argument behavior follows [Microsoft's Windows PowerShell command-line reference](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_powershell_exe?view=powershell-5.1). Encoding is for correct argument transport, not authentication or concealment.
+
 ## September 14: standalone repository and public usage guide
 
 Published [EntreePOS/entree-print](https://github.com/EntreePOS/entree-print) with initial source commit `b53158d4ac3df339a9f6bdfbc02e3ec4633d2c7d`: 185 source, test and documentation files, excluding generated binaries, local configuration, receipt ledgers and client-specific source-review notes. The root README links the standalone guide. This working checkout now tracks the new origin; the original prototype commit remains on `codex/prototype-history` and its remote is named `prototype`. Local working files were preserved.

@@ -44,7 +44,11 @@ Windows Service -> Restart Service
 Windows Service -> Uninstall Service
 ```
 
-These actions prompt for administrator elevation.
+These actions prompt for administrator elevation. The installed tray launches itself with a fixed `--service-action` operation. It accepts no script, executable path, configuration path or output path from the requesting process. Service commands are constructed only after elevation; no user-temporary PowerShell script or diagnostic file is executed or written by the elevated helper.
+
+Before changing a service or firewall rule, the helper checks that the Windows service command exactly matches this installation's quoted service executable. A foreign path, unquoted command or extra argument stops the operation. An absent service can be installed; uninstalling an absent service does nothing. Missing services cannot be started, stopped or restarted.
+
+The helper reads saved settings from the protected default ProgramData location, and requires trusted permissions on both executables. It invokes system Windows PowerShell without profiles, with system-only command and module lookup. Operations have a 90-second limit; a timeout requires checking current service status before retrying. Windows/UAC errors remain visible to the operator.
 
 `Diagnostics` calls `/api/health` and refreshes `/api/printers?refresh=true` with the configured API token and verified service ID.
 
@@ -56,7 +60,7 @@ The install action looks for the service executable in:
 ..\service\EntreePrintPlugin.exe
 ```
 
-relative to the tray app folder. Set `ENTREE_PRINT_SERVICE_EXE` to override this path.
+relative to the tray app folder. Service management ignores `ENTREE_PRINT_SERVICE_EXE` and `ENTREE_PRINT_CONFIG` overrides. Those remain development/diagnostic conveniences, not privileged installation inputs. Install the package into its protected application folder before using the service menu.
 
 ## Settings
 

@@ -10,6 +10,7 @@ static class Program
     {
         ApplicationConfiguration.Initialize();
         if (SettingsWriter.TryRunCommand(args, out var settingsExitCode)) return settingsExitCode;
+        if (ServiceCommand.TryRunCommand(args, out var serviceExitCode)) return serviceExitCode;
         var background = args.Contains("--background", StringComparer.OrdinalIgnoreCase);
         using var singleInstance = SingleInstanceGuard.TryAcquire();
         if (!singleInstance.IsPrimary)

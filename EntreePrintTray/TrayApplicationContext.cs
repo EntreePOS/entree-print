@@ -90,14 +90,14 @@ public sealed class TrayApplicationContext : ApplicationContext
     {
         var service = _serviceMenu = new ToolStripMenuItem("Windows Service");
         service.DropDownItems.Add("Install Service", null, async (_, _) => await RunServiceActionAsync("installing service",
-            () => _serviceManager.Install(PluginConfig.Load(_configPath))));
+            _serviceManager.Install));
         service.DropDownItems.Add("Uninstall Service", null, async (_, _) => await RunServiceActionAsync("uninstalling service", _serviceManager.Uninstall));
         service.DropDownItems.Add(new ToolStripSeparator());
         service.DropDownItems.Add("Start Service", null, async (_, _) => await RunServiceActionAsync("starting service",
-            () => _serviceManager.Start(PluginConfig.Load(_configPath))));
+            _serviceManager.Start));
         service.DropDownItems.Add("Stop Service", null, async (_, _) => await RunServiceActionAsync("stopping service", _serviceManager.Stop));
         service.DropDownItems.Add("Restart Service", null, async (_, _) => await RunServiceActionAsync("restarting service",
-            () => _serviceManager.Restart(PluginConfig.Load(_configPath))));
+            _serviceManager.Restart));
         return service;
     }
 
@@ -155,14 +155,14 @@ public sealed class TrayApplicationContext : ApplicationContext
             if (_disposed) return null;
             if (!installed)
                 return config.AutoInstallWindowsService
-                    ? await Task.Run(() => EnsureWindowsService(config))
+                    ? await Task.Run(() => EnsureWindowsService())
                     : "Settings saved. Automatic Windows Service install is disabled.";
             var result = MessageBox.Show(
                 "Settings saved. Restart the Windows Service now to apply them?",
                 "ENTREE Print Plugin", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
             if (result != DialogResult.Yes)
                 return "Settings saved. Restart the service later to apply runtime changes.";
-            await Task.Run(() => _serviceManager.Restart(config));
+            await Task.Run(_serviceManager.Restart);
             return "Windows Service restarted with saved settings.";
         }, showErrorDialog: true);
     }
@@ -177,19 +177,18 @@ public sealed class TrayApplicationContext : ApplicationContext
             }
             return Task.CompletedTask;
         }
-        var config = _config;
-        return RunServiceOperationAsync(() => Task.Run(() => EnsureWindowsService(config)));
+        return RunServiceOperationAsync(() => Task.Run(EnsureWindowsService));
     }
 
-    private string? EnsureWindowsService(PluginConfig config)
+    private string? EnsureWindowsService()
     {
         if (_serviceManager.IsInstalled())
         {
             if (_serviceManager.IsRunning()) return null;
-            _serviceManager.Start(config);
+            _serviceManager.Start();
             return "Windows Service is running.";
         }
-        _serviceManager.Install(config);
+        _serviceManager.Install();
         return "Windows Service installed and started.";
     }
 
