@@ -59,6 +59,7 @@ Omit `setWidth()` to use the actual driver printable area. An 80 mm paper roll o
 // Node / Electron main entry point; browser pages cannot broadcast UDP directly.
 import EntreePrint from './sdk/native.mjs';
 
+EntreePrint.config({ token: settings.printServiceToken });
 const servers = await EntreePrint.search();
 const print = await EntreePrint.search().connect();
 const status = await print.target('cashier').status({ refresh: true });

@@ -44,7 +44,7 @@ The updated candidate from `297a4645b5018f1469886bb30c983ccbbd8dec4b` passes the
 
 ## Remaining installer release checks
 
-Latest verified development candidate: [run 34823530375](https://github.com/EntreePOS/entree-print/actions/runs/34823530375), source `bc96eef5a8cd208df178a4d67a0a0b27d1436ae7`, includes the optional native SQLite SDK store. All 320 application tests, 81 core SDK tests, nine SQLite tests and 64 installer checkpoints pass. [Exact result](evidence/windows-ci-34823530375.json) and PACKAGE_VERIFICATION.md identify its installer hash and limits.
+Latest verified development candidate: [run 34831638120](https://github.com/EntreePOS/entree-print/actions/runs/34831638120), source `02110129a19bd07b4ef97ee5de43abeb4d601542`, includes ordered receipt actions, resumable status updates, the native SQLite store and the Chromium startup-file fix. All 374 application tests, 95 core SDK tests, nine SQLite tests and 64 installer checkpoints pass. [Exact result](evidence/windows-ci-34831638120.json) and PACKAGE_VERIFICATION.md identify its independently verified installer hash and limits.
 
 1. Clean Windows installation with no .NET runtime; confirm both packaged applications start.
 2. Configure and activate the service, verify printer/Chromium access under its account, and pilot the new protected-directory creation and UAC save path with both ordinary and alternate administrator accounts. The service setup still uses LocalSystem. Review every runtime dependency's permissions and verify the fixed installed service-management entry point under UAC before rollout. Its command generation and ownership checks have automated coverage; actual elevated deployment remains unverified.

@@ -1,5 +1,13 @@
 # Development package verification — 2026-09-13
 
+## September 14: ordered actions and Chromium startup candidate
+
+[Run 34831638120](https://github.com/EntreePOS/entree-print/actions/runs/34831638120) passed from `02110129a19bd07b4ef97ee5de43abeb4d601542`. Downloaded TRX confirms **374 .NET tests executed and passed**, with no failures or skips. Workflow logs confirm **95 core SDK and nine native SQLite tests**, plus nine isolated installer checks. All **64 hosted installer lifecycle checkpoints** passed, including permissions over **739 installed entries**. All five native logs report successful installation/update/uninstall/reinstall/final uninstall without reboot. The [recorded result](installer/evidence/windows-ci-34831638120.json) retains the source, checks and installer digest.
+
+The unsigned setup EXE is **80,858,574 bytes**, SHA-256 `f1ff6543401ff8134ad57644f60f94eaf54d6b68f4487f6fdd7cf39378b615ff`. Package manifest SHA-256 is `9b228697b9c3c90e3c2923c8a2842514f21b89baed81f1679811833b2ed301c0`. The downloaded EXE hash matches both build metadata and lifecycle evidence. [Artifact 10342652173](https://github.com/EntreePOS/entree-print/actions/runs/34831638120/artifacts/10342652173) retains the candidate and evidence for 14 days; local evidence is under `%TEMP%\EntreeInstallerCI-34831638120`.
+
+This candidate includes ordered receipt/cut/beep phase storage and the Chromium startup-file sharing fix. The earlier failed runs did not build installers: the first exposed a test deadline race; the second captured the renderer's actual sharing violation. Those cases pass in this candidate. Silent hosted verification left printing inactive; it does not prove interactive UAC/logon, service-account activation, no-runtime client deployment or physical/network recovery. No GitHub Release was created. Subsequent documentation edits update stale feature descriptions and token setup only.
+
 ## September 14: resumable status-stream candidate
 
 [Run 34827971685](https://github.com/EntreePOS/entree-print/actions/runs/34827971685) passed from `d2fd553335b71bb613098d20bd888e0d9ba5c904`. Downloaded TRX and workflow logs confirm **350 .NET tests, 93 core SDK tests and nine native SQLite tests**, all passing. The installer passed **64 lifecycle checkpoints**, including permissions across **739 installed entries**. All five native logs end in successful install/update/uninstall/reinstall/final uninstall, with no reboot. [Recorded result](installer/evidence/windows-ci-34827971685.json) retains the source, installer digest and checks.
