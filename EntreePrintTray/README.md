@@ -14,9 +14,9 @@ Manual launch opens Settings. Launching it again brings Settings back in the exi
 
 Both executables embed the printer icon from `assets/entree-print.ico`, with eight sizes from 16 to 256 pixels. Regenerate the asset with `scripts/generate-icon.ps1`. Startup failures are reported in a dialog and logged to `%LOCALAPPDATA%\EntreePrintPlugin\tray-startup.log`.
 
-By default, the tray installs and starts the C# print service as an automatic Windows Service. Windows may show a UAC prompt because service installation requires administrator permission.
+On a new installation, opening the tray displays Settings without saving configuration or installing the service. Saving with **Install/start print service** enabled can install/start the Windows service; later tray launches honor that saved setting. Windows may show a UAC prompt because service installation requires administrator permission.
 
-September 14 production launch check: a current self-contained build of the actual tray EXE opened a responsive Settings window (PID 43248), with its controls readable through desktop automation. The existing print service remained running as PID 6252. Window activation failed twice, and the screenshot did not establish visual appearance; operator confirmation of Settings and notification-area placement is pending. The executable and `desktop-check.json` evidence are under `%LOCALAPPDATA%\EntreePrintBuild\tray-422baf8`. This proves process startup only, not installer deployment, visible icon placement or logon startup.
+September 14 production launch check: a current self-contained build of the actual tray EXE opened a responsive Settings window (PID 43248), with its controls readable through desktop automation. The existing print service remained running as PID 6252. Window activation failed twice, and the screenshot did not establish visual appearance; operator confirmation of Settings and notification-area placement is pending. The executable and `desktop-check.json` evidence are under `%LOCALAPPDATA%\EntreePrintBuild\tray-422baf8`. This proves process startup only, not installer deployment, visible icon placement or logon startup. A follow-up check during installer run 34844339986 found the same Settings window; Raise and refreshed activation again returned `failed to activate captured window`, and capture still showed wallpaper. No service or settings controls were changed.
 
 ## Config File
 
@@ -32,7 +32,7 @@ The service reads the same file on startup. After saving settings, the tray prom
 
 ## Windows Service Actions
 
-The tray app installs the service by default. Disable `Install service automatically` if you want manual control.
+Disable **Install/start print service** if you want to control the service manually through the tray menu.
 
 Use the tray icon menu:
 

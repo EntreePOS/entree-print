@@ -1,5 +1,13 @@
 # Development package verification — 2026-09-13
 
+## September 14: portable receipt preparation candidate
+
+[Run 34844339986](https://github.com/EntreePOS/entree-print/actions/runs/34844339986) passed from `2975bf86700150124a76556fc79879dc52d9d787`. Downloaded TRX confirms **461 .NET tests passed** with no failures or skips, including 22 new portability cases. Native Microsoft Print to PDF preflight passed separately and within the suite (5100 dots, 600 DPI, no StartDoc). Workflow logs confirm **121 core SDK and eleven SQLite tests**. All **64 hosted installer checkpoints** passed over 739 installed entries. Five native logs confirm successful install/update/uninstall/reinstall/final uninstall without reboot. The [exact result](installer/evidence/windows-ci-34844339986.json) retains source, checks and digest.
+
+The unsigned EXE is **80,872,256 bytes**, SHA-256 `590cec883e202aac6fd21862e8ae8fd1c4c4d6d2cc9f600355cb6bd1fac72724`. Build metadata records package manifest SHA-256 `5433d0b6d4cf9a5695d79b16815e58ed2381358f732711d84928077596e1de9b`. Downloaded bytes match metadata, SHA256SUMS and lifecycle evidence. [Artifact 10347506353](https://github.com/EntreePOS/entree-print/actions/runs/34844339986/artifacts/10347506353) retains this candidate for 14 days; local files are under `%TEMP%\EntreeInstallerCI-34844339986`.
+
+This candidate prepares portable drawings on another service only after local driver/font/build, destination and pagination validation, without rerendering HTML or transferring a job. SDK automatic routing and durable cross-node ownership are still unfinished. Hosted lifecycle tests keep printing inactive; installed service/certificate access, interactive tray/logon and live printer/network recovery remain open. No GitHub Release was published. Subsequent checklist/tray documentation changes record evidence only.
+
 ## September 14: receipt preflight and SQLite commit recovery candidate
 
 [Run 34842784394](https://github.com/EntreePOS/entree-print/actions/runs/34842784394) passed from `c228f8ea26671b7d542aebc6e3ba57635798f93f`. Downloaded TRX confirms **439 .NET tests passed**, with no failures or skips. The native Microsoft Print to PDF preflight passed separately and within that suite (5100 dots, 600 DPI, no StartDoc). Workflow logs confirm **121 core SDK and eleven SQLite tests**. All **64 hosted installer checkpoints** passed over 739 installed entries. Five native logs confirm successful installation, update, uninstall, reinstall and final uninstall without reboot. The [exact result](installer/evidence/windows-ci-34842784394.json) retains source, checks and digest.
