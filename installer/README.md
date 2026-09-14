@@ -4,6 +4,8 @@ The installer is a development artifact, not a published release. It wraps a ver
 
 ## Build
 
+The latest verified candidate is [run 34838741586](https://github.com/EntreePOS/entree-print/actions/runs/34838741586), source `d021c374d627be2309fc4faf48b294fd106ba5cc`, including prepared receipt comparison. All 431 application tests, 115 core SDK tests, nine SQLite tests and 64 hosted installer checkpoints pass. [Exact evidence](evidence/windows-ci-34838741586.json) and PACKAGE_VERIFICATION.md identify the downloaded, hash-verified EXE. Printing is inactive during hosted installation tests; live service, printer/network and tray/logon verification remain open.
+
 Use the pinned .NET SDK and [Inno Setup 7.1.0](https://jrsoftware.org/isdl.php). The Inno Setup installer used for the initial build had a valid Pyrsys B.V. Authenticode signature and SHA-256 `0362a383ed217d4c4239b5933866dd96d3eb2102737da92f80f6057a4b40df2f`. Its bundled license permits commercial use; the authors request commercial users purchase a license to support development. No license purchase or code-signing credential is supplied by this repository.
 
 ```powershell
@@ -44,7 +46,7 @@ The updated candidate from `297a4645b5018f1469886bb30c983ccbbd8dec4b` passes the
 
 ## Remaining installer release checks
 
-Latest verified development candidate: [run 34837087581](https://github.com/EntreePOS/entree-print/actions/runs/34837087581), source `4545cd6f777ca5b2537b156a98e20235e9a90e76`, includes Windows destination identity, backup inventory revalidation, retained uncertainty, optional HTTPS, ordered receipt actions, resumable status and native SQLite storage. All 416 application tests, 115 core SDK tests, nine SQLite tests and 64 installer checkpoints pass. [Exact result](evidence/windows-ci-34837087581.json) and PACKAGE_VERIFICATION.md identify its independently verified installer hash and limits. Automatic routing, installed certificate/service access, interactive tray/logon and live printer/network recovery remain open.
+Previous verified development candidate: [run 34837087581](https://github.com/EntreePOS/entree-print/actions/runs/34837087581), source `4545cd6f777ca5b2537b156a98e20235e9a90e76`, includes Windows destination identity, backup inventory revalidation, retained uncertainty, optional HTTPS, ordered receipt actions, resumable status and native SQLite storage. All 416 application tests, 115 core SDK tests, nine SQLite tests and 64 installer checkpoints pass. [Exact result](evidence/windows-ci-34837087581.json) and PACKAGE_VERIFICATION.md identify its independently verified installer hash and limits. Automatic routing, installed certificate/service access, interactive tray/logon and live printer/network recovery remain open.
 
 1. Clean Windows installation with no .NET runtime; confirm both packaged applications start.
 2. Configure and activate the service, verify printer/Chromium access under its account, and pilot the new protected-directory creation and UAC save path with both ordinary and alternate administrator accounts. The service setup still uses LocalSystem. Review every runtime dependency's permissions and verify the fixed installed service-management entry point under UAC before rollout. Its command generation and ownership checks have automated coverage; actual elevated deployment remains unverified.

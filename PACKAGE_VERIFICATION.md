@@ -1,5 +1,13 @@
 # Development package verification — 2026-09-13
 
+## September 14: prepared receipt comparison candidate
+
+[Run 34838741586](https://github.com/EntreePOS/entree-print/actions/runs/34838741586) passed from `d021c374d627be2309fc4faf48b294fd106ba5cc`. Downloaded TRX confirms **431 .NET tests passed**, with zero failures or skips. Workflow logs confirm **115 core SDK and nine native SQLite tests**. All **64 hosted installer lifecycle checkpoints** passed over 739 installed entries; five native logs confirm successful installation/update/uninstall/reinstall/final uninstall without reboot. The [exact result](installer/evidence/windows-ci-34838741586.json) records source, checks and digest.
+
+The unsigned EXE is **80,863,122 bytes**, SHA-256 `bdd321d07348773df2ba7e6b39fd0954d33710455363b339a0cb466268b30a15`. Build metadata records package manifest SHA-256 `3c3a9a6dbc1d9de2dc41f9808a061624a8523d74263808f11c1268d62a58d493`. Downloaded installer bytes match metadata, SHA256SUMS and lifecycle evidence. [Artifact 10345765198](https://github.com/EntreePOS/entree-print/actions/runs/34838741586/artifacts/10345765198) retains this candidate for 14 days; local files are under `%TEMP%\EntreeInstallerCI-34838741586`.
+
+This candidate adds preparation-time layout/driver/font comparison evidence and persistence integrity. It does not transfer prepared artifacts or implement automatic backup routing. Hosted lifecycle checks keep printing inactive, so installed service/certificate access, interactive tray/logon and live printer/network recovery remain unverified. No GitHub Release was published.
+
 ## September 14: destination and retained-uncertainty candidate
 
 [Run 34837087581](https://github.com/EntreePOS/entree-print/actions/runs/34837087581) passed from `4545cd6f777ca5b2537b156a98e20235e9a90e76`. Downloaded TRX confirms **416 .NET tests passed**, with no failures or skips. Workflow logs confirm **115 core SDK tests, nine native SQLite tests and nine isolated installer checks**. All **64 hosted installer lifecycle checkpoints** passed, including permissions over **739 installed entries**. Five native logs confirm successful install/update/uninstall/reinstall/final uninstall, without reboot. The [exact result](installer/evidence/windows-ci-34837087581.json) records source, checks and digest.
