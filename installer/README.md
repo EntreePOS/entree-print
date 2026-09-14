@@ -32,6 +32,12 @@ Both output directories must be new. The build rejects a framework-dependent or 
 
 The lifecycle hook ordering and fatal error behavior were checked against Inno Setup 7.1.0's [uninstaller source](https://github.com/jrsoftware/issrc/blob/is-7_1_0/Projects/Src/Setup.Uninstall.pas). The helper refuses linked installation paths. Its nine child-shell tests replace all Windows service, firewall and startup-registry operations and cover missing/stopped/running/foreign services plus stop, wait, firewall and deletion failures. Those tests do not prove actual installation or removal.
 
+## Hosted installer verification
+
+The manually dispatched `Verify Windows installer` GitHub workflow builds the self-contained candidate, runs the application and isolated lifecycle tests, then runs `scripts/verify-installed-package.ps1` on a fresh `windows-2025` hosted runner. The script refuses developer machines, self-hosted runners and pre-existing Entree Print installations/data. It exercises silent install, same-version update, uninstall and reinstall, installed file permissions, fixed-helper settings save, byte retention, shortcuts and matching loaded-user startup cleanup. Logs, result JSON and the candidate are retained as workflow artifacts for 14 days; this does not create a GitHub Release.
+
+This is real installer execution with printing left inactive. The receipt files are synthetic byte-retention fixtures, not accepted jobs or spooler-recovery evidence. [GitHub's Windows runners](https://docs.github.com/en/actions/reference/runners/github-hosted-runners#administrative-privileges) run as administrators with UAC disabled and contain development runtimes. A passing run does not establish interactive UAC behavior, fresh-user logon, a Windows client with no installed .NET, service-account startup or hardware/network recovery.
+
 ## Remaining installer release checks
 
 1. Clean Windows installation with no .NET runtime; confirm both packaged applications start.

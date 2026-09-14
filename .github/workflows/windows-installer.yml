@@ -1,0 +1,67 @@
+name: Verify Windows installer
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-installer
+  cancel-in-progress: false
+
+jobs:
+  installer:
+    runs-on: windows-2025
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        with:
+          global-json-file: global.json
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22'
+      - name: Test application and installer boundaries
+        run: |
+          dotnet test EntreePrintPlugin.Tests/EntreePrintPlugin.Tests.csproj --artifacts-path "$env:RUNNER_TEMP\build-tests" --logger "trx;LogFileName=tests.trx" --results-directory "$env:RUNNER_TEMP\installer-evidence"
+          if ($LASTEXITCODE -ne 0) { throw 'Application tests failed.' }
+          & ./scripts/test-installer.ps1
+      - name: Build the self-contained package
+        run: |
+          & ./scripts/publish.ps1 -SelfContained -OutputRoot 'dist/ci-package' -ArtifactsPath "$env:RUNNER_TEMP\publish"
+      - name: Install verified Inno Setup compiler
+        run: |
+          $download = Join-Path $env:RUNNER_TEMP 'innosetup-7.1.0-x64.exe'
+          Invoke-WebRequest 'https://github.com/jrsoftware/issrc/releases/download/is-7_1_0/innosetup-7.1.0-x64.exe' -OutFile $download
+          $expected = '0362A383ED217D4C4239B5933866DD96D3EB2102737DA92F80F6057A4B40DF2F'
+          if ((Get-FileHash -LiteralPath $download -Algorithm SHA256).Hash -ne $expected) { throw 'Compiler download digest mismatch.' }
+          if ((Get-AuthenticodeSignature -LiteralPath $download).Status -ne 'Valid') { throw 'Compiler signature is not valid.' }
+          $start = [Diagnostics.ProcessStartInfo]::new($download)
+          $start.UseShellExecute = $false; $start.CreateNoWindow = $true
+          foreach ($argument in @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-', '/CURRENTUSER', '/NOICONS', '/TASKS=', "/DIR=$env:RUNNER_TEMP\InnoSetup")) { $start.ArgumentList.Add($argument) }
+          $process = [Diagnostics.Process]::Start($start)
+          if (-not $process.WaitForExit(180000)) { $process.Kill($true); throw 'Compiler setup timed out.' }
+          if ($process.ExitCode -ne 0) { throw "Compiler setup failed: $($process.ExitCode)." }
+          $process.Dispose()
+      - name: Compile installer
+        run: |
+          & ./scripts/build-installer.ps1 -PackageRoot 'dist/ci-package' -CompilerPath "$env:RUNNER_TEMP\InnoSetup\ISCC.exe" -OutputRoot 'dist/ci-installer'
+      - name: Install, update, uninstall and reinstall on the disposable runner
+        run: |
+          & ./scripts/verify-installed-package.ps1 -InstallerDirectory 'dist/ci-installer' -EvidenceRoot "$env:RUNNER_TEMP\installer-evidence"
+      - name: Save candidate and verification evidence
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: windows-installer-candidate-${{ github.sha }}
+          retention-days: 14
+          if-no-files-found: warn
+          path: |
+            dist/ci-installer/*
+            ${{ runner.temp }}/installer-evidence/*
