@@ -107,6 +107,15 @@ await cashier.cut({ idempotencyKey: cutAction.id });
 
 // Each action needs verified device bytes in service settings.
 // Windows driver cutting is used for ordinary receipts.`,
+  after: `const job = await print.target('kitchen')
+  .setContent('<h2>Order 1042</h2><p>炒饭 × 2</p>')
+  .print({
+    idempotencyKey: savedIntent.id,
+    after: { beep: true }
+  });
+
+const current = await print.getJob(job.id);
+const beep = current.after?.beep;`,
   build: `dotnet test EntreePrintPlugin.Tests/EntreePrintPlugin.Tests.csproj --artifacts-path "$env:TEMP\\EntreePrintTests"
 node --test sdk/test/*.test.mjs
 powershell -NoProfile -File scripts/publish.ps1 -OutputRoot ./dist/my-beta-build`

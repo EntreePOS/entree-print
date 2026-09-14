@@ -221,6 +221,18 @@ await cashier.cut({ idempotencyKey: cutAction.id });
 
 // Each action needs verified device bytes in service settings.
 // Windows driver cutting is used for ordinary receipts.</code></pre></div>
+          <h3>Beep after a receipt</h3>
+          <p>Request a supported beep as part of the receipt. Both share one intent and queue position. Each action keeps its own status, so a beep failure does not resend the receipt.</p>
+          <div class="code-panel" data-example="after"><div class="code-toolbar"><span>JavaScript</span><button class="copy" type="button" aria-label="Copy after example">Copy</button></div><pre tabindex="0"><code>const job = await print.target('kitchen')
+  .setContent('&lt;h2&gt;Order 1042&lt;/h2&gt;&lt;p&gt;炒饭 × 2&lt;/p&gt;')
+  .print({
+    idempotencyKey: savedIntent.id,
+    after: { beep: true }
+  });
+
+const current = await print.getJob(job.id);
+const beep = current.after?.beep;</code></pre></div>
+          <p>Ordinary cutting stays with the Windows driver. An optional raw cut requires explicit service configuration and driver cutting disabled; see the SDK guide. An uncertain action is not automatically repeated.</p>
           <p><code>sendCommand(Uint8Array)</code> is also available when raw commands are enabled for the queue. The client outbox handles receipts only and does not automatically replay device helpers.</p>
         </section>
         <section id="api" aria-labelledby="api-title">

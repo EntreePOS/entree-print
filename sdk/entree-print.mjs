@@ -352,7 +352,7 @@ export function createEntreePrint(options = {}, dependencies = {}) {
         if (reprintOf !== undefined)
           fail('JOB_OWNER_REQUIRED', 'Connect directly to the original job owner to request a reprint.');
         const body = JSON.parse(new TextDecoder().decode(wire.bytes));
-        verifyBackupDestination(this, body.printer, body.type !== 'print');
+        verifyBackupDestination(this, body.printer, body.type !== 'print' || !!trailingOptions(body.after));
       }
       await this.ready();
       for (let attempt = 0; ; attempt++) {
@@ -532,12 +532,21 @@ export function createEntreePrint(options = {}, dependencies = {}) {
       fail('CONTENT_TYPE_UNSUPPORTED', 'Use html, qrcode or barcode blocks. Image input is unsupported.');
     return copied;
   }
-  function printOptions(options) {
-    fields(options, ['idempotencyKey', 'metadata']);
+  function trailingOptions(value) {
+    if (value === undefined) return undefined;
+    fields(value, ['cut', 'beep']);
+    if (Object.values(value).some(flag => typeof flag !== 'boolean')) fail('COMMAND_INVALID', 'Trailing action flags must be booleans.');
+    const result = Object.fromEntries(['cut','beep'].filter(name => value[name] === true).map(name => [name,true]));
+    return Object.keys(result).length ? result : undefined;
+  }
+  function printOptions(options, receipt = false) {
+    fields(options, ['idempotencyKey', 'metadata', ...(receipt ? ['after'] : [])]);
     if (options.idempotencyKey !== undefined) text(options.idempotencyKey, 'idempotencyKey');
     if (options.metadata !== undefined && (!options.metadata || typeof options.metadata !== 'object' || Array.isArray(options.metadata)))
       fail('METADATA_INVALID', 'metadata must be an object.');
-    return snapshot(options);
+    const copy = snapshot(options);
+    if (receipt) { delete copy.after; const after = trailingOptions(options.after); if (after) copy.after = after; }
+    return copy;
   }
 
   function verifyBackupDestination(session, printerName, deviceCommand = false) {
@@ -576,17 +585,18 @@ export function createEntreePrint(options = {}, dependencies = {}) {
       return snapshot(await this.#rendering);
     }
     async print(options = {}) {
-      verifyBackupDestination(this.#session, this.#printer);
-      const supplied = printOptions(options);
+      const supplied = printOptions(options, true);
+      verifyBackupDestination(this.#session, this.#printer, !!supplied.after);
       const key = supplied.idempotencyKey ?? (this.#defaultKey ??= randomKey());
       const metadata = JSON.stringify(canonical(supplied.metadata ?? {}));
+      const signature = JSON.stringify({ metadata, after:supplied.after });
       let intent = this.#intents.get(key);
-      if (intent && intent.metadata !== metadata) fail('IDEMPOTENCY_CONFLICT', 'This ticket already uses the key with different metadata.');
+      if (intent && intent.signature !== signature) fail('IDEMPOTENCY_CONFLICT', 'This ticket already uses the key with different metadata or trailing actions.');
       if (!intent) {
         // Capture the preparation promise and bytes once. Later render() calls cannot change a retry.
         const rendering = this.#rendering ?? this.render();
-        intent = { metadata, wire: rendering.then(result => encode({ type: 'print', printer: this.#printer,
-          renderId: result.id, idempotencyKey: key, metadata: JSON.parse(metadata) })), inFlight: null };
+        intent = { signature, wire: rendering.then(result => encode({ type: 'print', printer: this.#printer,
+          renderId: result.id, idempotencyKey: key, metadata: JSON.parse(metadata), ...(supplied.after ? {after:supplied.after} : {}) })), inFlight: null };
         this.#intents.set(key, intent);
         const captured = intent;
         intent.wire.catch(() => { if (this.#intents.get(key) === captured) this.#intents.delete(key); });
@@ -786,22 +796,23 @@ export function createEntreePrint(options = {}, dependencies = {}) {
       return outbox ??= createOutboxController(io.outboxStorage ?? createIndexedDbOutboxStorage(), {
         owner: library => ownerSession(library).identity,
         validate(value, stored = false) {
-          if (!stored) fields(value, ['idempotencyKey', 'serviceId', 'printer', 'content', 'widthMm', 'metadata']);
+          if (!stored) fields(value, ['idempotencyKey', 'serviceId', 'printer', 'content', 'widthMm', 'metadata', 'after']);
           const source = { idempotencyKey: text(value.idempotencyKey, 'idempotencyKey'), serviceId: text(value.serviceId, 'serviceId', 128),
             printer: text(value.printer, 'printer name'), content: content(value.content) };
           if (!source.idempotencyKey.trim()) fail('REQUEST_INVALID', 'idempotencyKey cannot be blank.');
           if (value.widthMm !== undefined) source.widthMm = number(value.widthMm, 'width', 20, 100);
           if (value.metadata !== undefined) source.metadata = printOptions({ metadata: value.metadata }).metadata;
+          const after = trailingOptions(value.after); if (after) source.after = after;
           return source;
         },
         fingerprint: async source => (await encode(canonical(source))).digest,
         async prepare(library, record) {
           const session = ownerSession(library);
-          verifyBackupDestination(session, record.printer);
+          verifyBackupDestination(session, record.printer, !!record.after);
           const ticket = new Ticket(session, record.printer, record.content, record.widthMm);
           const rendered = await ticket.render();
           const body = { type: 'print', printer: record.printer, renderId: rendered.id, idempotencyKey: record.idempotencyKey,
-            ...(record.metadata === undefined ? {} : { metadata: record.metadata }) };
+            ...(record.metadata === undefined ? {} : { metadata: record.metadata }), ...(record.after ? {after:record.after} : {}) };
           const wire = await encode(body);
           return { json: new TextDecoder().decode(wire.bytes), digest: wire.digest };
         },
@@ -810,12 +821,13 @@ export function createEntreePrint(options = {}, dependencies = {}) {
           if (session.identity !== record.serviceId) fail('SERVICE_MISMATCH', 'The saved intent belongs to another service.');
           let body;
           try { body = JSON.parse(record.wire.json); } catch { fail('OUTBOX_CORRUPT', 'The saved print request is invalid.'); }
-          fields(body, ['type', 'printer', 'renderId', 'idempotencyKey', 'metadata']);
+          fields(body, ['type', 'printer', 'renderId', 'idempotencyKey', 'metadata', 'after']);
           const encoded = await encode(body);
           if (body.type !== 'print' || body.printer !== record.printer || body.idempotencyKey !== record.idempotencyKey ||
             typeof body.renderId !== 'string' || !body.renderId || encoded.digest !== record.wire.digest ||
             new TextDecoder().decode(encoded.bytes) !== record.wire.json ||
-            JSON.stringify(canonical(body.metadata)) !== JSON.stringify(canonical(record.metadata)))
+            JSON.stringify(canonical(body.metadata)) !== JSON.stringify(canonical(record.metadata)) ||
+            JSON.stringify(canonical(body.after)) !== JSON.stringify(canonical(record.after)))
             fail('OUTBOX_CORRUPT', 'The saved print request failed its identity or content check.');
           return session.submit(encoded, record.idempotencyKey);
         }

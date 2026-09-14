@@ -35,6 +35,11 @@ public sealed class CommandProcessor(
 
     private async Task ProcessAsync(AcceptedCommand command, JobRecord record, CancellationToken cancellationToken)
     {
+        if (record.Status is not ("queued" or "accepted" or "waiting_for_printer"))
+        {
+            await ProcessTrailingAsync(command, cancellationToken);
+            return; // Recovery of trailing work must never enter receipt submission again.
+        }
         while (!cancellationToken.IsCancellationRequested)
         {
             var blocker = GetRecoverablePrinterBlocker(command);
@@ -62,6 +67,7 @@ public sealed class CommandProcessor(
                 var result = await printerBackend.ExecuteAsync(command, cancellationToken);
                 record.SpoolerJobId = result.SpoolerJobId;
                 jobs.UpdateStatus(record, result.Status, result.Detail, result.ArtifactPath);
+                await ProcessTrailingAsync(command, cancellationToken);
                 return;
             }
             catch (Exception error)
@@ -79,12 +85,79 @@ public sealed class CommandProcessor(
                     }
 
                     jobs.UpdateStatus(record, "failed", $"Retry limit reached after recoverable print failure: {reason}. Last error: {error.Message}");
+                    await ProcessTrailingAsync(command, cancellationToken);
                     return;
                 }
 
                 jobs.UpdateStatus(record, error is CommandException ? "failed" : "needs_attention", error.Message);
+                await ProcessTrailingAsync(command, cancellationToken);
                 logger.LogWarning(error, "Command {Id} failed.", command.Id);
                 return;
+            }
+        }
+    }
+
+    private async Task ProcessTrailingAsync(AcceptedCommand command, CancellationToken token)
+    {
+        if (command.After is null) return;
+        while (!token.IsCancellationRequested)
+        {
+            try { await ProcessTrailingCoreAsync(command, token); return; }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+            {
+                // Keep the per-printer queue position while phase state cannot be
+                // saved. A later receipt must not overtake recoverable trailing work.
+                logger.LogWarning(error, "Waiting to save trailing action state for {Id}.", command.Id);
+                try { await Task.Delay(Math.Max(250,settings.PrintRetryDelayMs),token); }
+                catch (OperationCanceledException) when (token.IsCancellationRequested) { return; }
+            }
+        }
+    }
+
+    private async Task ProcessTrailingCoreAsync(AcceptedCommand command, CancellationToken token)
+    {
+        if (command.After is null) return;
+        var receipt = jobs.GetDelivery(command.Id);
+        var canContinue = receipt.Status is "submitted" or "printing" or "blocked" or "completed"
+            && !receipt.SpoolerHandoffUncertain
+            && (receipt.WindowsDocumentName is null || receipt.SpoolerHandoffCompletedAt.HasValue);
+        foreach (var action in command.After)
+        {
+            var phase = jobs.GetDelivery(JobStore.PhaseId(command.Id, action.Type));
+            if (phase.Status != "queued")
+            {
+                if (phase.Status == "submitting")
+                    jobs.UpdateStatus(phase,"needs_attention","Action handoff could not be recorded completely; reconcile its Windows identity before another action.");
+                canContinue &= phase.Status is "submitted" or "printing" or "blocked" or "completed"
+                    && !phase.SpoolerHandoffUncertain
+                    && (phase.WindowsDocumentName is null || phase.SpoolerHandoffCompletedAt.HasValue);
+                continue;
+            }
+            if (!canContinue)
+            {
+                jobs.UpdateStatus(phase, "skipped", "An earlier delivery phase failed or is uncertain; this action was not sent.");
+                continue;
+            }
+            if (token.IsCancellationRequested) return; // Still queued, safe to recover after restart.
+            phase.Attempts = 1;
+            jobs.UpdateStatus(phase, "submitting");
+            try
+            {
+                var result = await printerBackend.ExecuteAsync(new AcceptedCommand(phase.Id, action.Type, command.Printer,
+                    "", "", action.Command, null), token);
+                phase.SpoolerJobId = result.SpoolerJobId;
+                jobs.UpdateStatus(phase, result.Status, result.Detail, result.ArtifactPath);
+                var saved = jobs.GetDelivery(phase.Id);
+                canContinue = saved.Status is "submitted" or "printing" or "blocked" or "completed"
+                    && !saved.SpoolerHandoffUncertain
+                    && (saved.WindowsDocumentName is null || saved.SpoolerHandoffCompletedAt.HasValue);
+            }
+            catch (Exception error)
+            {
+                // No automatic retry for a trailing action, and never retry the receipt because of it.
+                jobs.UpdateStatus(phase, error is PrintNotSubmittedException or CommandException ? "failed" : "needs_attention", error.Message);
+                canContinue = false;
+                logger.LogWarning(error, "Trailing {Type} for job {Id} needs attention.", action.Type, command.Id);
             }
         }
     }

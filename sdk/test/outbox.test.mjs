@@ -63,6 +63,19 @@ test('a new SDK instance sends a previously unsent ticket and never repeats acce
   assert.equal(calls.length, count); assert.equal(jobs.size, 1);
 });
 
+test('outbox persists trailing actions and recovers their identical wire after lost acknowledgement',async t=>{
+  const {client,store,faults,calls}=harness(t), first=client();
+  await first.outbox().enqueue({...intent(),after:{beep:true}});
+  assert.deepEqual(store.records[0].after,{beep:true});
+  await assert.rejects(first.outbox().enqueue({...intent(),after:{cut:true}}),{code:'OUTBOX_CONFLICT'});
+  faults.loseAck=true;await first.outbox().flush(await first.connect());first.disconnect();
+  faults.loseAck=false;const next=client();await next.outbox().flush(await next.connect());
+  const sent=calls.filter(call=>call.path==='/api/jobs');
+  assert.equal(sent.length,2);assert.equal(sent[0].wire,sent[1].wire);
+  assert.deepEqual(sent[0].body.after,{beep:true});
+  assert.equal(calls.filter(call=>call.path==='/api/renders').length,1);
+});
+
 test('lost ACK recovery after SDK replacement resends exact saved bytes without another render', async t => {
   const { client, faults, calls, jobs } = harness(t); const api = client();
   await api.outbox().enqueue(intent()); faults.loseAck = true;

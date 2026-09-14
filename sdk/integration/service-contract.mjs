@@ -296,6 +296,23 @@ async function eventRecovery() {
   } finally {subscription.close();}
 }
 
+async function trailingActions() {
+  const print=await api.connect();
+  const ticket=print.target(kitchen).setContent(html);
+  faults=['lost','lost'];
+  await assert.rejects(ticket.print({idempotencyKey:'ordered-actions',metadata,after:{beep:true,cut:true}}),{delivery:'unknown'});
+  await waitState('ordered-actions','completed');
+  const before=await control('inspect');
+  assert.equal(before.jobs.length,1);assert.equal(before.deliveries.length,3);
+  await control('restart',{expirePreviews:true});
+  const replay=await ticket.print({idempotencyKey:'ordered-actions',metadata,after:{cut:true,beep:true}});
+  assert.equal(replay.state,'completed');
+  assert.equal(replay.after.cut.state,'completed');assert.equal(replay.after.beep.state,'completed');
+  assert.equal(new Set(jobWires).size,1);assert.equal(renderCalls,1);
+  assert.equal((await control('inspect')).deliveries.length,3);
+  await assert.rejects(ticket.print({idempotencyKey:'ordered-actions',metadata,after:{beep:true}}),{code:'IDEMPOTENCY_CONFLICT'});
+}
+
 try {
   const scenario = process.argv[2];
   if (scenario === 'lost-ack') await lostAck();
@@ -306,6 +323,7 @@ try {
   else if (scenario === 'outbox') await durableClientOutbox();
   else if (scenario === 'sqlite-outbox') await durableClientOutbox(true);
   else if (scenario === 'events') await eventRecovery();
+  else if (scenario === 'after') await trailingActions();
   else throw new Error(`Unknown scenario: ${scenario}`);
   process.stdout.write(JSON.stringify({ done: true, scenario }) + '\n');
 } catch (error) {

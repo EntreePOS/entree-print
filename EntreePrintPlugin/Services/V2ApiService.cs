@@ -81,7 +81,7 @@ public sealed class V2ApiService(PluginSettings settings, ServiceIdentity identi
                 source = printer.StatusSource, offline = printer.Offline, paperOut = printer.PaperOut, paperLow = printer.PaperLow,
                 coverOpen = printer.CoverOpen, paused = printer.Paused,
                 capabilities = new { beep = profile?.BeepCommandHex is not null, openDrawer = profile?.DrawerCommandHex is not null,
-                    cut = profile?.CutCommandHex is not null && profile.CutMode != "driver", sendCommand = profile?.AllowRawCommands == true }
+                    cut = profile?.CutCommandHex is not null && profile.CutMode == "raw", sendCommand = profile?.AllowRawCommands == true }
         };
     }
 
@@ -157,13 +157,21 @@ public sealed class V2ApiService(PluginSettings settings, ServiceIdentity identi
     public async Task<(object Job, bool Created)> SubmitAsync(V2Request request, CancellationToken token)
     {
         var body = request.Body;
-        V2Request.Fields(body, "type", "printer", "renderId", "idempotencyKey", "metadata", "bytesBase64");
+        V2Request.Fields(body, "type", "printer", "renderId", "idempotencyKey", "metadata", "bytesBase64", "after");
         var key = V2Request.String(body, "idempotencyKey", 200);
         var id = JobId(key);
         var type = V2Request.String(body, "type");
         var name = V2Request.String(body, "printer");
         var prior = jobs.GetCommand(id);
         var metadata = ReadMetadata(body);
+        var requestedActions = ReadTrailing(body, type);
+        TrailingCommand[]? after = null;
+        if (prior is not null)
+        {
+            if (!requestedActions.SequenceEqual(prior.After?.Select(action => action.Type) ?? []))
+                throw new CommandException("IDEMPOTENCY_CONFLICT", "This intent already has different trailing actions.");
+            after = prior.After;
+        }
         if (jobs.ReplayArchived(id, request.Digest) is { } archived)
             return (JobView(archived), false);
         PreparedReceipt? receipt = null;
@@ -192,6 +200,13 @@ public sealed class V2ApiService(PluginSettings settings, ServiceIdentity identi
             var printer = await FindPrinterAsync(name, token);
             name = printer.Name;
             var profile = Profile(name);
+            if (requestedActions.Length != 0)
+                after = requestedActions.Select(action => new TrailingCommand(action, NormalizeHex(action switch
+                {
+                    "beep" => profile?.BeepCommandHex,
+                    "cut" when profile?.CutMode == "raw" => profile?.CutCommandHex,
+                    _ => null
+                } ?? throw new CommandException("COMMAND_UNSUPPORTED", "A trailing action requires verified device bytes; driver-managed cutting cannot also request a raw cut.")))).ToArray();
             if (receipt is not null && receipt.ProfileVersion != LayoutVersion(printer, await driverSettings.ReadAsync(name, token)))
                 throw new CommandException("PRINTER_SETTINGS_CHANGED", "Windows printer settings changed since preview; prepare the receipt again.");
             if (type != "print")
@@ -202,15 +217,26 @@ public sealed class V2ApiService(PluginSettings settings, ServiceIdentity identi
                 {
                     "beep" => profile?.BeepCommandHex,
                     "open_cash_drawer" => profile?.DrawerCommandHex,
-                    "cut" when profile?.CutMode != "driver" => profile?.CutCommandHex,
+                    "cut" when profile?.CutMode == "raw" => profile?.CutCommandHex,
                     _ => null
                 } ?? throw new CommandException("COMMAND_UNSUPPORTED", "This operation requires a verified command in the printer profile.");
                 commandHex = NormalizeHex(commandHex);
             }
         }
         else if (prior.Printer.Equals(name, StringComparison.OrdinalIgnoreCase)) name = prior.Printer;
-        var accepted = processor.AcceptValidated(new AcceptedCommand(id, type, name, "", "", commandHex, null, receipt, key, metadata, request.Digest));
+        var accepted = processor.AcceptValidated(new AcceptedCommand(id, type, name, "", "", commandHex, null, receipt, key, metadata, request.Digest, After: after));
         return (JobView(accepted.Job), accepted.Created);
+    }
+
+    private static string[] ReadTrailing(JsonElement body, string type)
+    {
+        if (!body.TryGetProperty("after", out var after)) return [];
+        if (type != "print") throw new CommandException("FIELD_UNSUPPORTED", "Only receipt printing accepts trailing actions.");
+        V2Request.Fields(after, "cut", "beep");
+        foreach (var option in after.EnumerateObject())
+            if (option.Value.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+                throw new CommandException("COMMAND_INVALID", "Trailing action flags must be booleans.");
+        return new[] { "cut", "beep" }.Where(name => after.TryGetProperty(name, out var value) && value.GetBoolean()).ToArray();
     }
 
     private static string ReadMetadata(JsonElement body)
@@ -316,13 +342,19 @@ public sealed class V2ApiService(PluginSettings settings, ServiceIdentity identi
         return new
         {
             job.Id, identity.ServiceId, job.Type, job.Printer, job.RenderId, command.IdempotencyKey,
-            state = job.Status == "queued" ? "accepted" : job.Status, metadata = metadata.RootElement.Clone(), command.ReprintOf,
+            state = JobStore.DisplayState(job), metadata = metadata.RootElement.Clone(), command.ReprintOf,
             integrity = new { verified = command.RequestDigest is not null, algorithm = "sha256", requestDigest = command.RequestDigest },
             delivery = new { state = job.SpoolerState == "unknown" ? "unknown" : job.SpoolerHandoffCompletedAt.HasValue ? "sent" : job.WindowsDocumentName is not null ? "unknown" : "not_sent",
                 evidence = job.SpoolerJobId.HasValue ? "windows_spooler" : "none", job.SpoolerJobId },
             spooler = new { state = job.SpoolerState, jobId = job.SpoolerJobId, queue = job.SpoolerQueue, observedAt = job.SpoolerObservedAt,
                 windowsStatus = job.WindowsStatus, statusText = job.WindowsStatusText },
-            reason = job.Detail, job.Version, job.AcceptedAt, job.UpdatedAt,
+            reason = job.After?.FirstOrDefault(action => action.Status is "failed" or "needs_attention" or "skipped")?.Detail ?? job.Detail,
+            after = job.After?.ToDictionary(action => action.Type, action => new { state = action.Status == "queued" ? "accepted" : action.Status,
+                action.Version, reason = action.Detail, action.Attempts, action.UpdatedAt,
+                delivery = new { state = action.SpoolerHandoffUncertain || action.Status == "needs_attention" ? "unknown" : action.SpoolerHandoffCompletedAt.HasValue ? "sent" : action.WindowsDocumentName is not null ? "unknown" : "not_sent" },
+                spooler = new { state = action.SpoolerState, jobId = action.SpoolerJobId, queue = action.SpoolerQueue,
+                    observedAt = action.SpoolerObservedAt, windowsStatus = action.WindowsStatus } }),
+            job.Version, job.AcceptedAt, job.UpdatedAt,
             job.ArtifactExpiresAt, job.ArtifactExpiredAt
         };
     }

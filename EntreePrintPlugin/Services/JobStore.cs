@@ -16,6 +16,7 @@ public sealed class JobStore : IDisposable
     private readonly TimeSpan _artifactRetention;
     private readonly (int Jobs, int PreparedJobs, long Bytes) _limits;
     private readonly Dictionary<string, StoredJob> _jobs = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, string> _phaseOwners = new(StringComparer.Ordinal);
     public const int MaxRetainedJobs = 100000;
     public const int MaxPreparedJobs = 10000;
     public const long MaxAcceptanceBytes = 512_000_000;
@@ -47,6 +48,7 @@ public sealed class JobStore : IDisposable
                 var stored = JsonSerializer.Deserialize<StoredJob>(bytes)
                     ?? throw new InvalidDataException($"Unreadable job record: {path}");
                 ValidatePrepared(stored.Command);
+                ValidatePhases(stored.Job, stored.Command);
                 long priorVersion = 0;
                 foreach (var pending in stored.PendingEvents ?? [])
                 {
@@ -66,29 +68,33 @@ public sealed class JobStore : IDisposable
                 if (stored.Command.Prepared is not null) _preparedCount++;
                 _jobs[stored.Job.Id] = stored with { Bytes = bytes.Length };
             }
+            foreach (var stored in _jobs.Values) RegisterPhases(stored.Job);
             FlushPendingEvents(throwOnFailure: false);
-            foreach (var stored in _jobs.Values.ToArray())
-                if (stored.Job.Status is "processing" or "submitting")
-                    UpdateStatus(stored.Job, "needs_attention", "Service stopped during handoff; reconcile Windows before reprinting.");
+            foreach (var job in _jobs.Values.SelectMany(stored => DeliveryStates(stored.Job)).ToArray())
+                if (job.Status is "processing" or "submitting")
+                    UpdateStatus(job, "needs_attention", "Service stopped during handoff; reconcile Windows before reprinting.");
         }
         catch { _owner.Dispose(); throw; }
     }
 
     public JobRecord? Get(string id)
     {
-        lock (_gate) return _jobs.TryGetValue(id, out var stored) ? stored.Job with { } : null;
+        lock (_gate) return _jobs.TryGetValue(id, out var stored) ? CloneJob(stored.Job) : null;
     }
 
     public (JobRecord Job, bool Created) Accept(AcceptedCommand command, int maxAttempts)
     {
         lock (_gate)
         {
-            if (command.Prepared is not null) { command = Clone(command); ValidatePrepared(command); }
+            command = Clone(command);
+            ValidatePrepared(command);
+            ValidateTrailing(command);
             var hash = Hash(command);
+            if (_phaseOwners.ContainsKey(command.Id)) throw new InvalidDataException("A job ID conflicts with a delivery phase.");
             if (_jobs.TryGetValue(command.Id, out var existing))
             {
                 if (existing.Hash != hash) throw new CommandException("IDEMPOTENCY_CONFLICT", "This intent ID already belongs to a different command.");
-                return (existing.Job with { }, false);
+                return (CloneJob(existing.Job), false);
             }
             if (command.ReprintOf is { } originalId)
             {
@@ -102,7 +108,11 @@ public sealed class JobStore : IDisposable
                 throw new CommandException("QUEUE_FULL", "The job ledger has reached its retention limit. Existing jobs and duplicate protection are retained.");
             var now = _clock.GetUtcNow();
             var job = new JobRecord { Id = command.Id, Type = command.Type, Printer = command.Printer,
-                RenderId = command.Prepared?.Id, Status = "queued", MaxAttempts = maxAttempts, AcceptedAt = now, UpdatedAt = now };
+                RenderId = command.Prepared?.Id, Status = "queued", MaxAttempts = maxAttempts, AcceptedAt = now, UpdatedAt = now,
+                After = command.After?.Select(action => new JobRecord { Id = PhaseId(command.Id, action.Type), Type = action.Type,
+                    Printer = command.Printer, Status = "queued", MaxAttempts = 1, AcceptedAt = now, UpdatedAt = now }).ToArray() };
+            if (job.After?.Any(action => _jobs.ContainsKey(action.Id) || _phaseOwners.ContainsKey(action.Id)) == true)
+                throw new InvalidDataException("A delivery phase conflicts with an existing job.");
             var stored = PrepareWrite(new StoredJob(1, job, command, hash));
             var bytes = JsonSerializer.SerializeToUtf8Bytes(stored);
             if (_storedBytes + bytes.Length > _limits.Bytes)
@@ -111,17 +121,18 @@ public sealed class JobStore : IDisposable
             catch (Exception error) when (error is IOException or UnauthorizedAccessException)
             { throw new CommandException("STORAGE_UNAVAILABLE", "Could not durably accept this print intent."); }
             _jobs.Add(command.Id, stored with { Bytes = bytes.Length });
+            RegisterPhases(job);
             _storedBytes += bytes.Length;
             if (command.Prepared is not null) _preparedCount++;
             Notify(_jobs[command.Id]);
-            return (job with { }, true);
+            return (CloneJob(job), true);
         }
     }
 
     public AcceptedCommand? GetCommand(string id, bool includePrepared = true)
     {
         lock (_gate) return _jobs.TryGetValue(id, out var stored)
-            ? includePrepared ? Clone(stored.Command) : stored.Command with { Prepared = null } : null;
+            ? includePrepared ? Clone(stored.Command) : Clone(stored.Command with { Prepared = null }) : null;
     }
 
     // Exact original request bytes remain replayable even after receipt geometry is removed.
@@ -132,11 +143,12 @@ public sealed class JobStore : IDisposable
             if (!_jobs.TryGetValue(id, out var stored) || stored.Job.ArtifactExpiredAt is null) return null;
             if (stored.Command.RequestDigest is null || !stored.Command.RequestDigest.Equals(digest, StringComparison.OrdinalIgnoreCase))
                 throw new CommandException("IDEMPOTENCY_CONFLICT", "This retained intent requires its original request bytes. Its receipt artifact has expired; do not reuse the key for new work.");
-            return stored.Job with { };
+            return CloneJob(stored.Job);
         }
     }
 
-    private static bool CanExpire(JobRecord job) => !job.SpoolerHandoffUncertain && job.CompletedAt.HasValue
+    private static bool CanExpire(JobRecord job) => (job.After is null || job.After.All(action => action.Status == "completed"))
+        && !job.SpoolerHandoffUncertain && job.CompletedAt.HasValue
         && ((job.Status == "completed" && job.SpoolerState is "completed" or "not_submitted")
             || (job.Status == "failed" && job.WindowsDocumentName is null));
 
@@ -185,7 +197,7 @@ public sealed class JobStore : IDisposable
     {
         lock (_gate) return _jobs.Values.Select(x => x.Job)
             .Where(job => printer is null || job.Printer.Equals(printer, StringComparison.OrdinalIgnoreCase))
-            .OrderByDescending(job => job.AcceptedAt).Take(Math.Clamp(limit, 1, 200)).Select(job => job with { }).ToArray();
+            .OrderByDescending(job => job.AcceptedAt).Take(Math.Clamp(limit, 1, 200)).Select(CloneJob).ToArray();
     }
 
     public AcceptedCommand ReprintSource(string id)
@@ -195,7 +207,8 @@ public sealed class JobStore : IDisposable
             if (!_jobs.TryGetValue(id, out var source)) throw new CommandException("JOB_NOT_FOUND", "Original job was not found.");
             if (source.Command.Type != "print" || source.Command.IdempotencyKey is null)
                 throw new CommandException("JOB_NOT_REPRINTABLE", "Only receipt jobs can be reprinted; device commands require a new explicit action.");
-            if (source.Job.Status is not ("completed" or "failed" or "needs_attention") || source.Job.SpoolerState is "submitting" or "submitted" or "printing" or "blocked")
+            if (DisplayState(source.Job) is not ("completed" or "failed" or "needs_attention") ||
+                DeliveryStates(source.Job).Any(phase => phase.SpoolerState is "submitting" or "submitted" or "printing" or "blocked"))
                 throw new CommandException("JOB_NOT_REPRINTABLE", "The original job is still active. Check its status instead of creating another copy.");
             if (source.Command.Prepared is null) throw new CommandException("ARTIFACT_EXPIRED", "The original receipt is no longer available for reprinting.");
             return Clone(source.Command);
@@ -210,28 +223,29 @@ public sealed class JobStore : IDisposable
                 && (query.Printer is null || item.Job.Printer.Equals(query.Printer, StringComparison.OrdinalIgnoreCase))
                 && (query.Station is null || item.Metadata.Station == query.Station)
                 && (query.OrderID is null || item.Metadata.OrderID == query.OrderID)
-                && (query.Status.Length == 0 || query.Status.Contains(item.Job.Status == "queued" ? "accepted" : item.Job.Status, StringComparer.Ordinal))
+                && (query.Status.Length == 0 || query.Status.Contains(DisplayState(item.Job), StringComparer.Ordinal))
                 && (query.Since is null || item.Job.AcceptedAt >= query.Since)
                 && (cursor is null || item.Job.AcceptedAt < cursor.AcceptedAt ||
                     (item.Job.AcceptedAt == cursor.AcceptedAt && string.CompareOrdinal(item.Job.Id, cursor.Id) < 0)))
                 .OrderByDescending(item => item.Job.AcceptedAt).ThenByDescending(item => item.Job.Id, StringComparer.Ordinal)
                 .Take(query.Limit + 1).ToArray();
-            return (matches.Take(query.Limit).Select(item => (item.Job with { }, item.Command with { Prepared = null })).ToArray(), matches.Length > query.Limit);
+            return (matches.Take(query.Limit).Select(item => (CloneJob(item.Job), Clone(item.Command with { Prepared = null }))).ToArray(), matches.Length > query.Limit);
         }
     }
 
     public IReadOnlyList<(AcceptedCommand Command, JobRecord Job)> RecoverableJobs()
     {
-        lock (_gate) return _jobs.Values.Where(x => x.Job.Status is "queued" or "accepted" or "waiting_for_printer")
-            .OrderBy(x => x.Job.AcceptedAt).Select(x => (Clone(x.Command), x.Job with { })).ToArray();
+        lock (_gate) return _jobs.Values.Where(x => x.Job.Status is "queued" or "accepted" or "waiting_for_printer" ||
+                x.Job.After?.Any(action => action.Status == "queued") == true)
+            .OrderBy(x => x.Job.AcceptedAt).Select(x => (Clone(x.Command), CloneJob(x.Job))).ToArray();
     }
 
     public IReadOnlyList<JobRecord> MonitoredJobs()
     {
-        lock (_gate) return _jobs.Values.Select(x => x.Job)
+        lock (_gate) return _jobs.Values.SelectMany(x => DeliveryStates(x.Job))
             .Where(job => job.WindowsDocumentName is not null && job.SpoolerQueue is not null
                 && job.Status is not ("completed" or "failed"))
-            .Select(job => job with { }).ToArray();
+            .Select(CloneJob).ToArray();
     }
 
     // Persist a unique attempt identity BEFORE calling Windows. Client receipt titles are not unique enough.
@@ -240,7 +254,7 @@ public sealed class JobStore : IDisposable
         ArgumentException.ThrowIfNullOrWhiteSpace(queue);
         lock (_gate)
         {
-            var current = _jobs[id].Job;
+            var current = State(id);
             if (current.WindowsDocumentName is not null)
                 throw new InvalidOperationException("A Windows submission already exists for this intent; reconcile it instead of resubmitting.");
             var document = $"ENTREE {Guid.NewGuid():N}";
@@ -256,7 +270,7 @@ public sealed class JobStore : IDisposable
         if (spoolerJobId == 0) throw new ArgumentOutOfRangeException(nameof(spoolerJobId));
         lock (_gate)
         {
-            var job = _jobs[id].Job;
+            var job = State(id);
             if (job.WindowsDocumentName != document || (job.SpoolerJobId.HasValue && job.SpoolerJobId != spoolerJobId))
                 throw new InvalidOperationException("Windows submission identity changed.");
             if (job.SpoolerJobId == spoolerJobId) return;
@@ -272,8 +286,8 @@ public sealed class JobStore : IDisposable
         if (spoolerJobId == 0) return false;
         lock (_gate)
         {
-            if (!_jobs.TryGetValue(id, out var stored)) return false;
-            var job = stored.Job;
+            if (!TryState(id, out var current)) return false;
+            var job = current;
             if (job.SpoolerJobId.HasValue || job.WindowsDocumentName != document
                 || !string.Equals(job.SpoolerQueue, queue, StringComparison.OrdinalIgnoreCase)
                 || job.Status is "completed" or "failed") return false;
@@ -292,7 +306,7 @@ public sealed class JobStore : IDisposable
     {
         lock (_gate)
         {
-            var job = _jobs[id].Job;
+            var job = State(id);
             if (job.SpoolerJobId.HasValue) throw new InvalidOperationException("Windows already created this job.");
             Commit(job with { WindowsDocumentName = null, SpoolerQueue = null, SpoolerState = "not_submitted",
                 SpoolerStartedAt = null, UpdatedAt = _clock.GetUtcNow() });
@@ -303,7 +317,7 @@ public sealed class JobStore : IDisposable
     {
         lock (_gate)
         {
-            var job = _jobs[id].Job;
+            var job = State(id);
             if (job.SpoolerJobId != spoolerJobId || job.WindowsDocumentName != document || job.SpoolerState == "completed") return;
             // Completion is monotonic for this exact attempt, even if a later query only reports deletion.
             flags |= (job.WindowsStatus ?? 0) & 0x1080;
@@ -321,7 +335,7 @@ public sealed class JobStore : IDisposable
     {
         lock (_gate)
         {
-            var job = _jobs[id].Job;
+            var job = State(id);
             if (job.SpoolerState is "completed" or "unknown") return;
             Commit(job with { Status = "needs_attention", SpoolerState = "unknown", Detail = reason, Error = reason,
                 UpdatedAt = _clock.GetUtcNow() });
@@ -332,15 +346,15 @@ public sealed class JobStore : IDisposable
     {
         lock (_gate)
         {
-            var stored = _jobs[job.Id];
-            var next = stored.Job with { Status = status, UpdatedAt = _clock.GetUtcNow(),
+            var current = State(job.Id);
+            var next = current with { Status = status, UpdatedAt = _clock.GetUtcNow(),
                 Error = status is "failed" or "needs_attention" ? detailOrError : null,
-                Detail = detailOrError, ArtifactPath = artifactPath ?? stored.Job.ArtifactPath,
+                Detail = detailOrError, ArtifactPath = artifactPath ?? current.ArtifactPath,
                 Attempts = job.Attempts, RetryReason = job.RetryReason, NextRetryAt = job.NextRetryAt,
-                SpoolerJobId = stored.Job.SpoolerJobId ?? job.SpoolerJobId,
+                SpoolerJobId = current.SpoolerJobId ?? job.SpoolerJobId,
                 CompletedAt = status is "completed" or "failed" or "rendered" or "render_pending" ? _clock.GetUtcNow() : null };
-            if (stored.Job.SpoolerState == "completed")
-                next = stored.Job with { ArtifactPath = next.ArtifactPath }; // Late worker returns cannot erase completion.
+            if (current.SpoolerState == "completed")
+                next = current with { ArtifactPath = next.ArtifactPath }; // Late worker returns cannot erase completion.
             else if (next.WindowsDocumentName is not null)
             {
                 if (status == "submitted")
@@ -401,8 +415,18 @@ public sealed class JobStore : IDisposable
 
     private void Commit(JobRecord next)
     {
+        if (_phaseOwners.TryGetValue(next.Id, out var parentId))
+        {
+            var parent = _jobs[parentId].Job;
+            var previous = parent.After!.Single(action => action.Id == next.Id);
+            var action = next with { Version = previous.Version + 1 };
+            Commit(parent with { After = parent.After!.Select(item => item.Id == next.Id ? action : item).ToArray(),
+                UpdatedAt = next.UpdatedAt });
+            return;
+        }
         if (_jobs[next.Id].Command.Prepared is not null)
-            next.ArtifactExpiresAt = CanExpire(next) ? next.ArtifactExpiresAt ?? next.CompletedAt + _artifactRetention : null;
+            next.ArtifactExpiresAt = CanExpire(next) ? next.ArtifactExpiresAt ??
+                DeliveryStates(next).Max(phase => phase.CompletedAt) + _artifactRetention : null;
         next = next with { Version = _jobs[next.Id].Job.Version + 1 };
         var stored = PrepareWrite(_jobs[next.Id] with { Job = next });
         Persist(stored); // No state/event is visible before the write succeeds.
@@ -421,7 +445,7 @@ public sealed class JobStore : IDisposable
         var pending = _jobs.GetValueOrDefault(next.Job.Id)?.PendingEvents ?? [];
         if (_events.History is null && pending.Length == 0) return next with { PendingEvents = null };
         if (pending.Length >= 256) throw new IOException("Pending job notifications reached their limit. Existing state remains retained.");
-        return next with { PendingEvents = [.. pending, next.Job with { }] };
+        return next with { PendingEvents = [.. pending, CloneJob(next.Job)] };
     }
 
     private void Notify(StoredJob stored)
@@ -457,6 +481,56 @@ public sealed class JobStore : IDisposable
     }
 
     private static AcceptedCommand Clone(AcceptedCommand command) => JsonSerializer.Deserialize<AcceptedCommand>(JsonSerializer.SerializeToUtf8Bytes(command))!;
+    private static JobRecord CloneJob(JobRecord job) => job with { After = job.After?.Select(action => action with { }).ToArray() };
+    private static IEnumerable<JobRecord> DeliveryStates(JobRecord job) => new[] { job }.Concat(job.After ?? []);
+    internal static string PhaseId(string id, string type) => id + ":after:" + type;
+    internal JobRecord GetDelivery(string id) { lock (_gate) return CloneJob(State(id)); }
+    private JobRecord State(string id) => _phaseOwners.TryGetValue(id, out var owner)
+        ? _jobs[owner].Job.After!.Single(action => action.Id == id) : _jobs[id].Job;
+    private bool TryState(string id, out JobRecord job)
+    {
+        if (_jobs.ContainsKey(id) || _phaseOwners.ContainsKey(id)) { job = State(id); return true; }
+        job = null!; return false;
+    }
+    private void RegisterPhases(JobRecord job)
+    {
+        foreach (var phase in job.After ?? [])
+            if (_jobs.ContainsKey(phase.Id) || !_phaseOwners.TryAdd(phase.Id, job.Id)) throw new InvalidDataException("Conflicting delivery phase identity.");
+    }
+    private static void ValidateTrailing(AcceptedCommand command)
+    {
+        if (command.After is null) return;
+        if (command.Type != "print" || command.After.Length is < 1 or > 2 ||
+            command.After.Select(action => action.Type).Distinct().Count() != command.After.Length)
+            throw new InvalidDataException("Invalid trailing receipt actions.");
+        foreach (var action in command.After)
+            if (action.Type is not ("cut" or "beep") || action.Command.Length is < 2 or > 8192 ||
+                action.Command.Length % 2 != 0 || action.Command.Any(c => !char.IsAsciiHexDigit(c)))
+                throw new InvalidDataException("Invalid trailing device command.");
+        if (command.After.Length == 2 && command.After[0].Type != "cut") throw new InvalidDataException("Cut must precede beep.");
+    }
+    private static void ValidatePhases(JobRecord job, AcceptedCommand command)
+    {
+        ValidateTrailing(command);
+        if ((job.After?.Length ?? 0) != (command.After?.Length ?? 0)) throw new InvalidDataException("Missing delivery phases.");
+        for (var index = 0; index < (job.After?.Length ?? 0); index++)
+        {
+            var phase = job.After![index];
+            if (phase.Id != PhaseId(job.Id,command.After![index].Type) || phase.Type != command.After[index].Type ||
+                phase.Printer != job.Printer || phase.After is not null || phase.Version < 1)
+                throw new InvalidDataException("Invalid delivery phase identity.");
+        }
+    }
+    internal static string DisplayState(JobRecord job)
+    {
+        var actions = job.After ?? [];
+        if (job.Status is "failed" or "needs_attention") return job.Status;
+        if (actions.Any(action => action.Status is "failed" or "needs_attention" or "skipped")) return "needs_attention";
+        if (actions.Any(action => action.Status == "blocked")) return "blocked";
+        if (job.Status == "completed" && actions.Any(action => action.Status != "completed"))
+            return actions.Any(action => action.Status is "queued" or "submitting") ? "submitting" : "submitted";
+        return job.Status == "queued" ? "accepted" : job.Status;
+    }
 
     private static void ValidatePrepared(AcceptedCommand command)
     {
@@ -471,7 +545,7 @@ public sealed class JobStore : IDisposable
         // One 0.0.1 format. Preview IDs/TTLs and transport byte order are not content identity.
         var bytes = JsonSerializer.SerializeToUtf8Bytes(new { command.Id, command.Type, command.Printer, command.IdempotencyKey,
             command.Html, command.Style, command.ContentJson, contentHash = command.Prepared?.ContentHash ?? archivedContentHash,
-            command.Command, command.MetadataJson, command.ReprintOf });
+            command.Command, command.MetadataJson, command.ReprintOf, command.After });
         return Convert.ToHexString(SHA256.HashData(bytes));
     }
     private string RecordPath(string id) => Path.Combine(_directory!, Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(id))) + ".json");

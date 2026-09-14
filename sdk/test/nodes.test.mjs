@@ -142,6 +142,7 @@ test('backup connection cannot move USB receipts or device commands; explicit ow
   await assert.rejects(print.target('cashier').setContent('<p>USB receipt</p>').print(),{code:'PRINTER_OWNER_REQUIRED'});
   await assert.rejects(print.target('unknown').setContent('<p>Unknown queue</p>').print(),{code:'PRINTER_OWNER_REQUIRED'});
   for (const method of ['beep','openDrawer','cut']) await assert.rejects(print.target('Kitchen')[method](),{code:'DEVICE_OWNER_REQUIRED'});
+  await assert.rejects(print.target('Kitchen').setContent('receipt').print({after:{beep:true}}),{code:'DEVICE_OWNER_REQUIRED'});
   await assert.rejects(print.target('Kitchen').sendCommand(new Uint8Array([27,64])),{code:'DEVICE_OWNER_REQUIRED'});
   assert.equal(calls.filter(item => item.body).length,0);
   const direct = await api.connect(node('backup'));

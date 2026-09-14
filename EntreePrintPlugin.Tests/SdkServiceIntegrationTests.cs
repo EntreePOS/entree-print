@@ -17,11 +17,13 @@ public sealed class SdkServiceIntegrationTests
     [InlineData("outbox", 1)]
     [InlineData("sqlite-outbox", 1)]
     [InlineData("events", 0)]
+    [InlineData("after", 3)]
     public async Task ActualSdk_UsesServicePipelineAndDurableLedger(string scenario, int expectedDeliveries)
     {
         await using var host = await V2EndpointTests.Harness.Start(new PluginSettings
         {
-            AccessToken = new string('t', 32), PrintRetryDelayMs = 250
+            AccessToken = new string('t', 32), PrintRetryDelayMs = 250,
+            PrinterProfiles = new() { ["厨房 A / 热菜"] = new() { CutMode = "raw", CutCommandHex = "1D5600", BeepCommandHex = "1B420101" } }
         });
         host.Inventory.Items = [host.Inventory.Items[0], new PrinterStatusRecord
         {
@@ -82,9 +84,16 @@ public sealed class SdkServiceIntegrationTests
             var error = await errors;
             Assert.True(node.ExitCode == 0 && finished, $"Node SDK scenario {scenario} failed: {error}");
             Assert.Equal(expectedDeliveries, host.Backend.Calls);
-            Assert.Equal(scenario == "events" ? 1 : expectedDeliveries, host.Jobs.List().Count);
+            Assert.Equal(scenario is "events" or "after" ? 1 : expectedDeliveries, host.Jobs.List().Count);
             Assert.All(host.Backend.Executed, command =>
             {
+                if (command.Type != "print")
+                {
+                    Assert.Equal("after",scenario);
+                    Assert.Null(command.Prepared);
+                    Assert.Equal(command.Type == "cut" ? "1D5600" : "1B420101",command.Command);
+                    return;
+                }
                 Assert.NotNull(command.Prepared);
                 Assert.Contains("欢迎", string.Join(" ", command.Prepared.Layout.Text.Select(text => text.Text)));
                 Assert.NotNull(command.RequestDigest);
@@ -124,7 +133,7 @@ public sealed class SdkServiceIntegrationTests
                 using (var timeout = CancellationTokenSource.CreateLinkedTokenSource(token))
                 {
                     timeout.CancelAfter(TimeSpan.FromSeconds(5));
-                    while (host.Jobs.Get(jobId)?.Status != state) await Task.Delay(10, timeout.Token);
+                    while (host.Jobs.Get(jobId) is not { } job || JobStore.DisplayState(job) != state) await Task.Delay(10, timeout.Token);
                 }
                 break;
             case "offline":

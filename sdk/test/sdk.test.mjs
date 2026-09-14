@@ -407,8 +407,23 @@ test('schema and unsupported after-actions fail before any print request', async
   const { api, calls } = harness(t);
   assert.throws(() => api.config({ port: '9779' }), { code: 'REQUEST_INVALID' });
   assert.throws(() => api.target('Kitchen').setContent([{ type: 'image', url: 'anywhere' }]), { code: 'CONTENT_TYPE_UNSUPPORTED' });
-  await assert.rejects(api.target('Kitchen').setContent('receipt').print({ after: ['beep'] }), { code: 'FIELD_UNSUPPORTED' });
+  await assert.rejects(api.target('Kitchen').setContent('receipt').print({ after: ['beep'] }), { code: 'REQUEST_INVALID' });
+  await assert.rejects(api.target('Kitchen').setContent('receipt').print({ after: {openDrawer:true} }), { code: 'FIELD_UNSUPPORTED' });
+  await assert.rejects(api.target('Kitchen').setContent('receipt').print({ after: {beep:1} }), { code: 'COMMAND_INVALID' });
   assert.equal(calls.length, 0);
+});
+
+test('trailing action options are frozen into the same receipt intent and concurrent retries', async t => {
+  const {api,calls}=harness(t);await api.connect();
+  const ticket=api.target('Kitchen').setContent('receipt'), after={beep:true,cut:true};
+  const one=ticket.print({idempotencyKey:'with-actions',after});
+  const two=ticket.print({idempotencyKey:'with-actions',after});
+  after.beep=false;
+  await Promise.all([one,two]);
+  const sent=calls.filter(call=>call.body?.type==='print');
+  assert.equal(sent.length,1);assert.deepEqual(sent[0].body.after,{cut:true,beep:true});
+  await assert.rejects(ticket.print({idempotencyKey:'with-actions',after}),{code:'IDEMPOTENCY_CONFLICT'});
+  await assert.rejects(api.target('Kitchen').beep({after:{beep:true}}),{code:'FIELD_UNSUPPORTED'});
 });
 
 test('repeated identical configurations share the handshake and one heartbeat timer', async t => {

@@ -40,7 +40,7 @@ Direct `connect(options)` and `search().connect()` return the same library inter
 ## Implemented operations
 
 - `config()`, `connect(options?)`, `disconnect()`, `target(name)`, awaitable `search()` and `search().connect()` with a native discovery transport. `connect({ ip, port, token })` accepts settings directly; `connect(server)` also accepts a record returned by `search()` and verifies its service ID. Omitted settings retain configured defaults. Existing targets keep their original service.
-- Immutable `setContent()` and `setWidth()` builders, `render()` and `print()`.
+- Immutable `setContent()` and `setWidth()` builders, `render()` and `print({ idempotencyKey?, metadata?, after? })`.
 - `target.status()`, `beep()`, `openDrawer()`, `cut()`, `sendCommand(Uint8Array)`; optional `idempotencyKey`/`metadata` on each command.
 - `getPrinters({ refresh })`, `getJob(id)`, `getJob({ idempotencyKey })`, `getJobRender(id)`.
 - `getJobs(printerName?, { station?, orderID?, status?, since?, limit?, cursor? })` returns `{ items, nextCursor }`; default 30, maximum 100. `status` accepts one state or an array. `since` is an ISO date/time with a time-zone offset or `Z`.
@@ -48,7 +48,25 @@ Direct `connect(options)` and `search().connect()` return the same library inter
 - `subscribe(handler, { events? })`, returning `{ close() }`. Defaults to connection, printer, job and sync events. Use `{ events: ['connection'] }` for heartbeat-only monitoring.
 - Automatic service heartbeat after connect; `resume()` performs an immediate check. Browser pageshow/focus/visibility hooks trigger a fresh check and inventory refresh; Electron can supply its powerMonitor resume event through the native factory below.
 
-Ordered `after` actions remain unimplemented. See [API_DESIGN.md](../API_DESIGN.md) for the full target contract.
+### Receipt actions in order
+
+```javascript
+const job = await print.target('kitchen')
+  .setContent('<h2>Order 1042</h2><p>炒饭 × 2</p>')
+  .print({ idempotencyKey: savedIntent.id, after: { beep: true } });
+
+// Later, through an event or a status read:
+const current = await print.getJob(job.id);
+const beep = current.after?.beep;
+```
+
+`after` accepts boolean `cut` and `beep` flags. The order is receipt → optional raw cut → optional beep, regardless of object-key order. Drawer opening and arbitrary raw bytes are separate explicit actions. A new receipt validates all requested actions before durable acceptance. Missing/unsupported device bytes reject the whole request without submitting the receipt. For ordinary driver-managed cutting, omit `after.cut`; a raw cut requires `CutMode: "raw"`, verified `CutCommandHex` and driver cutting disabled in Windows. The default cut policy is `driver`.
+
+The receipt and actions share one intent and one per-printer queue position. Other Entree Print jobs cannot enter between their submissions. Windows scheduling, its driver and other applications can still affect downstream processing; this is not physical execution confirmation. Each action has independent Windows identity and state in `job.after.cut` / `job.after.beep` (`state`, `version`, `reason`, `attempts`, `delivery`, `spooler`). A skipped action has state `skipped` and was not sent. Root `spooler`/`delivery` still describe the receipt. Overall `job.state` becomes `needs_attention` if an action fails or is uncertain, while the receipt's completion evidence remains intact.
+
+Retries preserve the same receipt and action bytes; changing actions under the same key conflicts. After restart, only actions known to be unsent may continue following a confirmed full receipt handoff. An uncertain action is never automatically repeated, and later actions are skipped. A storage failure holds the plugin queue position until phase state can be saved or the service stops. Receipt layout retention waits for all actions to complete and starts from the last completion; unresolved action jobs retain their layout. An explicit `reprintJob()` copies the original actions as well as its receipt and metadata, and is rejected while any phase remains active in Windows.
+
+The client outbox also accepts `after`; it saves the flags with source content and then retains the exact receipt request. It does not create independent device-command retries. Automatic backup selections require a direct owner connection for receipts with device actions, consistent with standalone helper commands.
 
 ### Resumable status updates
 
@@ -226,7 +244,7 @@ node --test sdk/test/*.test.mjs
 node --test sdk/test/native/sqlite-outbox.test.mjs
 ```
 
-81 core SDK tests and nine SQLite outbox tests pass, including controlled transport/discovery/heartbeat checks, real Chromium IndexedDB/Web Locks, local process crashes and concurrent native dispatch. Seven SDK/TestServer scenarios also run in the .NET suite, including the production SQLite adapter with real Chromium preparation, ledger reopen and lost acknowledgements. Real LAN discovery, OS sleep/resume and full installed-service network/physical-printer integration remain pending. Browser storage tests require Node.js 22+ and local Edge/Chrome; the SQLite scenario requires node:sqlite enabled.
+95 core SDK tests and nine SQLite outbox tests pass, including controlled transport/discovery/heartbeat checks, real Chromium IndexedDB/Web Locks, local process crashes and concurrent native dispatch. Nine SDK/TestServer scenarios also run in the .NET suite, including the production SQLite adapter, resumable status events and ordered receipt actions with real Chromium preparation, ledger reopen and lost acknowledgements. Real LAN discovery, OS sleep/resume and full installed-service network/physical-printer integration remain pending. Browser storage tests require Node.js 22+ and local Edge/Chrome; the SQLite scenario requires node:sqlite enabled.
 
 ## Discovery and address recovery
 

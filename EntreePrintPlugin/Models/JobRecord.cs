@@ -31,4 +31,5 @@ public sealed record JobRecord
     public DateTimeOffset? CompletedAt { get; set; }
     public DateTimeOffset? ArtifactExpiresAt { get; set; }
     public DateTimeOffset? ArtifactExpiredAt { get; set; }
+    public JobRecord[]? After { get; init; }
 }
