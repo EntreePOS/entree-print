@@ -16,6 +16,8 @@ Both executables embed the printer icon from `assets/entree-print.ico`, with eig
 
 By default, the tray installs and starts the C# print service as an automatic Windows Service. Windows may show a UAC prompt because service installation requires administrator permission.
 
+September 14 production launch check: a current self-contained build of the actual tray EXE opened a responsive Settings window (PID 43248), with its controls readable through desktop automation. The existing print service remained running as PID 6252. Window activation failed twice, and the screenshot did not establish visual appearance; operator confirmation of Settings and notification-area placement is pending. The executable and `desktop-check.json` evidence are under `%LOCALAPPDATA%\EntreePrintBuild\tray-422baf8`. This proves process startup only, not installer deployment, visible icon placement or logon startup.
+
 ## Config File
 
 By default, settings are saved to:
