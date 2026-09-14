@@ -1,5 +1,13 @@
 # Development package verification — 2026-09-13
 
+## September 14: resumable status-stream candidate
+
+[Run 34827971685](https://github.com/EntreePOS/entree-print/actions/runs/34827971685) passed from `d2fd553335b71bb613098d20bd888e0d9ba5c904`. Downloaded TRX and workflow logs confirm **350 .NET tests, 93 core SDK tests and nine native SQLite tests**, all passing. The installer passed **64 lifecycle checkpoints**, including permissions across **739 installed entries**. All five native logs end in successful install/update/uninstall/reinstall/final uninstall, with no reboot. [Recorded result](installer/evidence/windows-ci-34827971685.json) retains the source, installer digest and checks.
+
+The unsigned installer is **80,840,863 bytes**, SHA-256 `e458a8d906c5a97d62c62f15f95c0f33a327babdfc62a6dffcd7ebacef64c21b`; build metadata records package manifest SHA-256 `19e542cc15821e43e52038d440a830f0fc39890680b86527e8901588c9437cd4`. The downloaded EXE hash matches the lifecycle result and build metadata. [Artifact 10341461250](https://github.com/EntreePOS/entree-print/actions/runs/34827971685/artifacts/10341461250) contains the candidate/evidence with 14-day retention. Local evidence: `%TEMP%\EntreeInstallerCI-34827971685`.
+
+This packages durable event history, authenticated SSE, printer checkpoints/removals and SDK resumption/reconciliation. The actual SDK/TestServer replay scenario uses zero print/render submissions across ledger reopen. Installer verification keeps printing inactive on a hosted administrator VM; it does not establish interactive UAC/logon, service activation, live LAN or physical fault recovery. No GitHub Release was created. The subsequent `439c1b9` change only shortens the public site's example lines; it changes no packaged SDK or application file. Published guide and playground were checked in the browser after deployment.
+
 ## September 14: native SQLite outbox candidate
 
 [Run 34823530375](https://github.com/EntreePOS/entree-print/actions/runs/34823530375) passed from `bc96eef5a8cd208df178a4d67a0a0b27d1436ae7`. Downloaded TRX/logs confirm **320 .NET tests, 81 core SDK tests and nine native SQLite tests** passed. All **64 installer lifecycle checkpoints** passed, including permissions across **738 installed entries** with the additional SDK adapter. Five native logs report successful install/update/uninstall/reinstall/final uninstall without reboot. [Recorded result](installer/evidence/windows-ci-34823530375.json) preserves the exact source, installer digest and checkpoint list.
