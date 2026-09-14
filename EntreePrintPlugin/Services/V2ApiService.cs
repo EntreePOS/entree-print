@@ -22,7 +22,7 @@ public sealed class V2ApiService(PluginSettings settings, ServiceIdentity identi
         var inventory = await InventoryAsync(true, token);
         if (inventory.Length == 0) throw new CommandException("NO_PRINTERS", "This service has no installed Windows printers.");
         return new { identity.ServiceId, identity.BootId, apiVersion = "0.0.1", rendererVersion = ServiceIdentity.Version,
-            ip, port = settings.HttpPort, capabilities = new { render = true, print = true, qrcode = true, barcode = new[] { "code39", "code128" }, images = false },
+            ip, port = settings.HttpPort, protocol = settings.Scheme, capabilities = new { render = true, print = true, qrcode = true, barcode = new[] { "code39", "code128" }, images = false },
             retention = new { receiptDays = settings.ReceiptRetentionDays, pendingReceiptsExpire = false,
                 idempotency = "retained", maxJobs = JobStore.MaxRetainedJobs, maxPreparedJobs = JobStore.MaxPreparedJobs,
                 acceptanceByteBudget = JobStore.MaxAcceptanceBytes }, printers = inventory };

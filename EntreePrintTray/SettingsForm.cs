@@ -15,6 +15,9 @@ public sealed class SettingsForm : Form
     private readonly CheckBox _showAccessToken = new();
     private readonly Button _generateAccessToken = new();
     private readonly TextBox _browserPath = new();
+    private readonly CheckBox _httpsEnabled = new();
+    private readonly TextBox _httpsHost = new();
+    private readonly TextBox _httpsThumbprint = new();
     private readonly NumericUpDown _printerStatusRefreshSeconds = NumberBox(1, 3600);
     private readonly NumericUpDown _printRetryMaxAttempts = NumberBox(0, 10000);
     private readonly NumericUpDown _printRetryDelaySeconds = NumberBox(1, 600);
@@ -77,6 +80,12 @@ public sealed class SettingsForm : Form
         AddRow(advancedPanel, "Refresh interval (s)", _printerStatusRefreshSeconds);
         AddRow(advancedPanel, "Retry count", _printRetryMaxAttempts);
         AddRow(advancedPanel, "Retry delay (s)", _printRetryDelaySeconds);
+        AddSpacer(advancedPanel);
+        AddRow(advancedPanel, "Use HTTPS", _httpsEnabled);
+        AddRow(advancedPanel, "Certificate host", _httpsHost, "A DNS name or IP in the certificate. Clients must trust its issuer.");
+        AddRow(advancedPanel, "Certificate thumbprint", _httpsThumbprint, "The certificate in Local Computer / Personal, including its private key. Setup is managed by your administrator.");
+        AddNote(advancedPanel, "HTTPS encrypts API traffic on the plugin port. Restart after saving. A missing or invalid certificate stops service startup; it does not fall back to HTTP.");
+        _httpsEnabled.CheckedChanged += (_, _) => { _httpsHost.Enabled = _httpsEnabled.Checked; _httpsThumbprint.Enabled = _httpsEnabled.Checked; };
 
         tabs.TabPages.Add(CreateTab("Basic", basicPanel));
 
@@ -110,7 +119,7 @@ public sealed class SettingsForm : Form
         var save = new Button { Text = "Save", Width = 76, Height = 34 };
         var resetDefault = new Button { Text = "Reset Default", Width = 108, Height = 34 };
         var close = new Button { Text = "Close", Width = 76, Height = 34 };
-        _toolTip.SetToolTip(resetDefault, "Restore default preferences and keep your API access token. Click Save to apply.");
+        _toolTip.SetToolTip(resetDefault, "Restore default preferences and keep your API token and HTTPS configuration. Click Save to apply.");
         leftButtons.Controls.Add(resetDefault);
         rightButtons.Controls.Add(save);
         rightButtons.Controls.Add(close);
@@ -152,6 +161,10 @@ public sealed class SettingsForm : Form
         _showAccessToken.Checked = false;
         _generateAccessToken.Text = string.IsNullOrEmpty(config.AccessToken) ? "Generate token" : "Replace token";
         _browserPath.Text = config.BrowserExecutablePath;
+        _httpsEnabled.Checked = !string.IsNullOrWhiteSpace(config.HttpsCertificateThumbprint);
+        _httpsHost.Text = config.HttpsHost;
+        _httpsThumbprint.Text = config.HttpsCertificateThumbprint;
+        _httpsHost.Enabled = _httpsEnabled.Checked; _httpsThumbprint.Enabled = _httpsEnabled.Checked;
         _printerStatusRefreshSeconds.Value = config.PrinterStatusRefreshSeconds;
         _printRetryMaxAttempts.Value = config.PrintRetryMaxAttempts;
         _printRetryDelaySeconds.Value = Math.Max(1, config.PrintRetryDelayMs / 1000);
@@ -167,6 +180,8 @@ public sealed class SettingsForm : Form
             CorsAllowedOrigins = EntreePrint.Configuration.SecurityConfiguration.NormalizeOrigins(_corsAllowedOrigins.Text),
             AccessToken = _apiAccessToken.Text,
             BrowserExecutablePath = _browserPath.Text.Trim(),
+            HttpsHost = _httpsEnabled.Checked ? _httpsHost.Text.Trim() : "",
+            HttpsCertificateThumbprint = _httpsEnabled.Checked ? _httpsThumbprint.Text.Trim() : "",
             PrinterStatusRefreshSeconds = (int)_printerStatusRefreshSeconds.Value,
             PrintRetryMaxAttempts = (int)_printRetryMaxAttempts.Value,
             PrintRetryDelayMs = (int)_printRetryDelaySeconds.Value * 1000

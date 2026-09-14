@@ -7,22 +7,28 @@ namespace EntreePrintTray;
 
 public sealed record PluginConfig
 {
-    internal Uri ServiceUri => EntreePrint.Configuration.NetworkConfiguration.ServiceUri(BindAddress, HttpPort, localClient: true);
+    internal Uri ServiceUri => EntreePrint.Configuration.NetworkConfiguration.ServiceUri(BindAddress, HttpPort, localClient: true, httpsHost: HttpsHost);
     internal bool IsLanAccessible => EntreePrint.Configuration.NetworkConfiguration.IsLanAccessible(BindAddress);
     internal PluginConfig WithLanAccess(bool enabled) => this with
     {
         BindAddress = EntreePrint.Configuration.NetworkConfiguration.ApplyLanPreference(BindAddress, enabled)
     };
 
-    private PluginConfig Validate() => this with
+    private PluginConfig Validate()
     {
-        BindAddress = EntreePrint.Configuration.NetworkConfiguration.NormalizeBindAddress(BindAddress),
-        HttpPort = EntreePrint.Configuration.NetworkConfiguration.ValidatePort(HttpPort, "Plugin port"),
-        DiscoveryPort = EntreePrint.Configuration.NetworkConfiguration.ValidatePort(DiscoveryPort, "Discovery port"),
-        PrinterStatusRefreshSeconds = Range(PrinterStatusRefreshSeconds, 1, 3600, "Printer status refresh"),
-        PrintRetryMaxAttempts = Range(PrintRetryMaxAttempts, 0, 10000, "Print retry attempts"),
-        PrintRetryDelayMs = Range(PrintRetryDelayMs, 0, 600000, "Print retry delay (ms)")
-    };
+        var https = EntreePrint.Configuration.NetworkConfiguration.HttpsSettings(HttpsCertificateThumbprint, HttpsHost);
+        return this with
+        {
+            BindAddress = EntreePrint.Configuration.NetworkConfiguration.NormalizeBindAddress(BindAddress),
+            HttpPort = EntreePrint.Configuration.NetworkConfiguration.ValidatePort(HttpPort, "Plugin port"),
+            DiscoveryPort = EntreePrint.Configuration.NetworkConfiguration.ValidatePort(DiscoveryPort, "Discovery port"),
+            HttpsCertificateThumbprint = https.Thumbprint,
+            HttpsHost = https.Host,
+            PrinterStatusRefreshSeconds = Range(PrinterStatusRefreshSeconds, 1, 3600, "Printer status refresh"),
+            PrintRetryMaxAttempts = Range(PrintRetryMaxAttempts, 0, 10000, "Print retry attempts"),
+            PrintRetryDelayMs = Range(PrintRetryDelayMs, 0, 600000, "Print retry delay (ms)")
+        };
+    }
 
     private static int Range(int value, int minimum, int maximum, string name) => value >= minimum && value <= maximum
         ? value : throw new ArgumentException($"{name} must be between {minimum} and {maximum}.");
@@ -32,6 +38,8 @@ public sealed record PluginConfig
     public bool AutoInstallWindowsService { get; set; } = true;
     public string CorsAllowedOrigins { get; set; } = "*";
     public string AccessToken { get; set; } = "";
+    public string HttpsCertificateThumbprint { get; set; } = "";
+    public string HttpsHost { get; set; } = "";
     public string BrowserExecutablePath { get; set; } = "";
     public int PrinterStatusRefreshSeconds { get; set; } = 5;
     public int PrintRetryMaxAttempts { get; set; } = 120;
@@ -45,6 +53,8 @@ public sealed record PluginConfig
     public PluginConfig ResetPreferences() => new()
     {
         AccessToken = AccessToken,
+        HttpsCertificateThumbprint = HttpsCertificateThumbprint,
+        HttpsHost = HttpsHost,
         AdditionalSettings = AdditionalSettings
     };
 

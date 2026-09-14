@@ -38,7 +38,13 @@ public sealed class UdpDiscoveryService(
                 continue;
             }
 
-            var payload = JsonSerializer.Serialize(new
+            var payload = DiscoveryPayload(settings, identity, GetLanAddresses());
+            var bytes = Encoding.UTF8.GetBytes(payload);
+            await udp.SendAsync(bytes, received.RemoteEndPoint, stoppingToken);
+        }
+    }
+
+    internal static string DiscoveryPayload(PluginSettings settings, ServiceIdentity identity, string[] addresses) => JsonSerializer.Serialize(new
             {
                 ok = true,
                 service = "entree-print-plugin",
@@ -47,15 +53,12 @@ public sealed class UdpDiscoveryService(
                 bootId = identity.BootId,
                 version = ServiceIdentity.Version,
                 protocol = "entree-print",
+                scheme = settings.Scheme,
                 apiVersion = "0.0.1",
                 port = settings.HttpPort,
                 httpPort = settings.HttpPort,
-                addresses = GetLanAddresses()
+                addresses
             });
-            var bytes = Encoding.UTF8.GetBytes(payload);
-            await udp.SendAsync(bytes, received.RemoteEndPoint, stoppingToken);
-        }
-    }
 
     private static string[] GetLanAddresses()
     {

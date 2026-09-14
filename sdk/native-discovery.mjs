@@ -33,15 +33,15 @@ export function createNativeDiscovery({ port = 9778 } = {}, dependencies = {}) {
       try { value = JSON.parse(bytes.toString('utf8')); } catch { return; }
       if (value?.ok !== true || value.service !== 'entree-print-plugin' || value.protocol !== 'entree-print' ||
         value.apiVersion !== '0.0.1' || typeof value.serviceId !== 'string' || value.serviceId.length < 1 || value.serviceId.length > 128 ||
-        !Number.isInteger(value.port) || value.port < 1 || value.port > 65535 ||
+        !['http','https'].includes(value.scheme) || !Number.isInteger(value.port) || value.port < 1 || value.port > 65535 ||
         (serviceId && value.serviceId !== serviceId)) return;
-      const key = `${sender.address}:${value.port}`;
+      const key = `${value.scheme}://${sender.address}:${value.port}`;
       if (seen.has(key)) return;
       seen.add(key);
       try {
         // Ignore advertised address arrays: only probe the actual datagram sender.
         // The SDK separately verifies a fresh HTTP nonce and service identity before authorization.
-        onCandidate({ ip: sender.address, port: value.port, serviceId: value.serviceId,
+        onCandidate({ ip: sender.address, port: value.port, protocol: value.scheme, serviceId: value.serviceId,
           name: typeof value.name === 'string' ? value.name.slice(0, 128) : 'ENTREE Print' });
       } catch (error) { finish(error); }
     };

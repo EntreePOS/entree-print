@@ -37,6 +37,26 @@ Ordinary receipt printing uses the Windows driver's printable area and resolutio
 
 Direct `connect(options)` and `search().connect()` return the same library interface. The library code is bundled with the POS; the service handshake returns data, and the SDK returns the configured callable object. Connection still throws when the service is unavailable or has no installed printers.
 
+## HTTPS connections
+
+The service can use HTTPS on its configured port (9779 by default). Follow [certificate setup](../BETA_SETUP.md#https-setup) on the Windows service computer, then connect with the certificate's DNS name or IP address:
+
+```javascript
+const print = await EntreePrint.connect({
+  ip: 'print.example.com',
+  port: 9779,
+  protocol: 'https',
+  token: settings.printServiceToken
+});
+const printers = await print.getPrinters();
+```
+
+Use a name that resolves to the service computer and appears in the certificate's Subject Alternative Names. Every client must trust its issuer. Certificate errors remain connection errors; the SDK does not disable validation. HTTPS discovery and same-service address recovery ignore HTTP announcements, and HTTP and HTTPS libraries keep separate connection monitors. Explicitly configured backup nodes retain their own `protocol` settings; set every node to `https` for an encrypted deployment.
+
+Native UDP discovery verifies the actual sender IP, so its certificate must include that IP as an IP Subject Alternative Name. A DNS-only certificate works for a direct DNS connection but does not make IP discovery work. The playground checks HTTP and HTTPS at `127.0.0.1:9779`; its HTTPS connection requires a trusted certificate with a `127.0.0.1` IP Subject Alternative Name. When the plugin is unavailable or authorization is missing, receipt editing remains available in preview mode.
+
+HTTPS does not replace the access token or permitted website settings. Browser network-access policies still apply. Installed certificate/private-key access, renewal and browser/tablet deployment remain live pilot checks.
+
 ## Implemented operations
 
 - `config()`, `connect(options?)`, `disconnect()`, `target(name)`, awaitable `search()` and `search().connect()` with a native discovery transport. `connect({ ip, port, token })` accepts settings directly; `connect(server)` also accepts a record returned by `search()` and verifies its service ID. Omitted settings retain configured defaults. Existing targets keep their original service.

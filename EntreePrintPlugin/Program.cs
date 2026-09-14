@@ -20,7 +20,8 @@ if (WindowsServiceHelpers.IsWindowsService())
     EntreePrint.Security.ProtectedStorage.EnsureDirectory(settings.SpoolPath, privateData: true);
     EntreePrint.Security.ProtectedStorage.ValidatePrivateTree(settings.SpoolPath);
 }
-builder.WebHost.UseUrls(settings.ListenUri.AbsoluteUri);
+using var httpsCertificate = HttpsCertificate.Load(settings);
+HttpsCertificate.ConfigureServer(builder.WebHost, settings, httpsCertificate);
 
 builder.Services.AddPrintCors(settings);
 

@@ -53,7 +53,7 @@ async function loadPlayground({ token = '', probe, connect, immediateDeadline = 
     createElement() { return { content:{querySelectorAll:() => []}, innerHTML:'' }; } };
   const dependencies = { EntreePrint:sdk, document, presets, parseContent, apiCode, frameDocument,
     ResizeObserver:class { observe() {} }, Option:class { constructor(label,value) { this.value = value; } },
-    location:{origin:'http://127.0.0.1:19780'}, addEventListener() {}, fetch:probe,
+    location:{origin:'http://127.0.0.1:19780'}, addEventListener() {}, fetch:probe ?? (async () => ({ok:true,json:async()=>({service:'entree-print-plugin',apiVersion:'0.0.1'})})),
     setTimeout:immediateDeadline ? (callback, ms) => { assert.equal(ms,3000); queueMicrotask(callback); return 0; } : setTimeout,
     clearTimeout:immediateDeadline ? () => {} : clearTimeout };
   const source = (await readFile(new URL('./playground.mjs', import.meta.url), 'utf8'))
@@ -64,12 +64,12 @@ async function loadPlayground({ token = '', probe, connect, immediateDeadline = 
 }
 
 test('startup probes localhost and falls back to an editable preview without a plugin', async () => {
-  let probes = 0;
+  const probes = [];
   const { element } = await loadPlayground({ probe: async (url, options) => {
-    probes++; assert.equal(url,'http://127.0.0.1:9779/api/health'); assert.equal(options.credentials,'omit');
+    probes.push(url); assert.equal(options.credentials,'omit');
     throw new TypeError('Connection refused');
   } });
-  assert.equal(probes,1);
+  assert.deepEqual(probes,['http://127.0.0.1:9779/api/health','https://127.0.0.1:9779/api/health']);
   assert.equal(element('preview-kind').textContent,'Preview mode');
   assert.equal(element('connection-badge').textContent,'Preview mode');
   assert.match(element('preview').srcdoc,/Fried rice/);
@@ -109,5 +109,19 @@ test('authorized startup obtains printers from the library and heartbeat loss re
   assert.equal(element('render').disabled,true);
   connectionEvent({type:'connection',data:{state:'online'}});
   assert.equal(element('preview-kind').textContent,'Browser draft');
+  assert.equal(element('render').disabled,false);
+});
+
+test('startup recognizes a trusted HTTPS plugin and keeps that protocol for authenticated connection', async () => {
+  const {element} = await loadPlayground({token:'a'.repeat(32),probe:async (url,options)=>{
+    assert.equal(options.credentials,'omit'); assert.equal(options.redirect,'error');
+    if (url.startsWith('http:')) throw new TypeError('TLS-only server');
+    return {ok:true,json:async()=>({service:'entree-print-plugin',apiVersion:'0.0.1'})};
+  },connect:async config=>{
+    assert.equal(config.protocol,'https'); assert.equal(config.ip,'127.0.0.1');
+    return {getPrinters:async()=>[{name:'cashier'}]};
+  }});
+  assert.equal(element('protocol').value,'https');
+  assert.equal(element('connection-badge').textContent,'Connected');
   assert.equal(element('render').disabled,false);
 });

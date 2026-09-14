@@ -52,6 +52,30 @@ function setup(t) {
   return { api, state, clock };
 }
 
+test('HTTPS discovery never probes a plaintext announcement', async t => {
+  const {api,state} = setup(t);
+  api.config({protocol:'https'});
+  state.nodes.set('plain',{id:'same'}); state.nodes.set('secure',{id:'same'});
+  const connecting=api.search({timeoutMs:500}).connect(); await flush();
+  state.scans[0].onCandidate({ip:'plain',port:9779,protocol:'http',serviceId:'same'});
+  state.scans[0].onCandidate({ip:'secure',port:9779,protocol:'https',serviceId:'same'});
+  const library=await connecting;
+  assert.equal(library.connection.protocol,'https');
+  assert.ok(state.calls.every(call=>call.url.protocol==='https:' && call.url.hostname==='secure'));
+});
+
+test('HTTP and HTTPS libraries never share or replace one another’s connection monitor', async t => {
+  const {api,state,clock} = setup(t);
+  state.nodes.set('same-host',{id:'same'});
+  const secure=await api.connect({ip:'same-host',protocol:'https'});
+  const plain=await api.connect({ip:'same-host',protocol:'http'});
+  await secure.getPrinters(); assert.equal(state.calls.at(-1).url.protocol,'https:');
+  await plain.getPrinters(); assert.equal(state.calls.at(-1).url.protocol,'http:');
+  assert.equal(secure.connection.protocol,'https'); assert.equal(plain.connection.protocol,'http');
+  await clock.advance(100);
+  assert.deepEqual(new Set(state.calls.filter(call=>call.url.pathname==='/api/heartbeat').map(call=>call.url.protocol)),new Set(['https:','http:']));
+});
+
 test('search is lazy, shared when awaited, deduplicates identity, and closes at its deadline', async t => {
   const { api, state, clock } = setup(t);
   state.nodes.set('host-a', { id: 'a' }); state.nodes.set('host-alias', { id: 'a' }); state.nodes.set('host-b', { id: 'b' });

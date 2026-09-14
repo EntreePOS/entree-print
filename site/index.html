@@ -80,6 +80,7 @@ const print = await EntreePrint.config({
 const printers = await print.getPrinters();
 const cashier = print.target(printers[0].name);</code></pre></div>
           <p>The IP is the print-service computer's address, not the printer's address. Use <code>127.0.0.1</code> when your client runs on that same computer. Connection failure throws an error. Each returned library stays bound to its selected server.</p>
+          <p>For HTTPS, install a trusted server certificate in Windows, enable HTTPS in Advanced settings and pass <code>protocol: 'https'</code> with its matching name or IP. See <a href="https://github.com/EntreePOS/entree-print/blob/main/BETA_SETUP.md#https-setup">certificate setup</a>. The playground checks localhost automatically and keeps an editable preview when the plugin is unavailable.</p>
         </section>
         <section id="preview" aria-labelledby="preview-title">
           <h2 id="preview-title">Preview and print the same ticket</h2>

@@ -7,6 +7,9 @@ public sealed record PluginSettings
     public int DiscoveryPort { get; init; } = 9778;
     public string CorsAllowedOrigins { get; init; } = "*";
     public string AccessToken { get; init; } = "";
+    public string HttpsCertificateThumbprint { get; init; } = "";
+    public string HttpsHost { get; init; } = "";
+    internal string Scheme => HttpsCertificateThumbprint.Length == 0 ? "http" : "https";
     public Dictionary<string, Models.PrinterProfile> PrinterProfiles { get; init; } = new(StringComparer.OrdinalIgnoreCase);
     public int RetryTimeoutMs { get; init; } = 60000;
     public int RequestTimeoutMs { get; init; } = 3000;
@@ -17,10 +20,13 @@ public sealed record PluginSettings
     public int PrintRetryMaxAttempts { get; init; } = 120;
     public int PrintRetryDelayMs { get; init; } = 5000;
     public int ReceiptRetentionDays { get; init; } = 7;
-    internal Uri ListenUri => EntreePrint.Configuration.NetworkConfiguration.ServiceUri(BindAddress, HttpPort);
+    internal Uri ListenUri => EntreePrint.Configuration.NetworkConfiguration.ServiceUri(BindAddress, HttpPort, httpsHost: HttpsHost);
 
     public static PluginSettings FromConfiguration(IConfiguration configuration)
     {
+        var https = EntreePrint.Configuration.NetworkConfiguration.HttpsSettings(
+            ReadString(configuration, "HTTPS_CERTIFICATE_THUMBPRINT", "Plugin:HttpsCertificateThumbprint", "HttpsCertificateThumbprint", ""),
+            ReadString(configuration, "HTTPS_HOST", "Plugin:HttpsHost", "HttpsHost", ""));
         return new PluginSettings
         {
             BindAddress = EntreePrint.Configuration.NetworkConfiguration.NormalizeBindAddress(ReadString(configuration, "BIND_ADDRESS", "Plugin:BindAddress", "BindAddress", "0.0.0.0")),
@@ -28,6 +34,8 @@ public sealed record PluginSettings
             DiscoveryPort = EntreePrint.Configuration.NetworkConfiguration.ValidatePort(ReadInt(configuration, "DISCOVERY_PORT", "Plugin:DiscoveryPort", "DiscoveryPort", 9778), "Discovery port"),
             CorsAllowedOrigins = EntreePrint.Configuration.SecurityConfiguration.NormalizeOrigins(ReadString(configuration, "CORS_ALLOWED_ORIGINS", "Plugin:CorsAllowedOrigins", "CorsAllowedOrigins", "*")),
             AccessToken = ReadString(configuration, "ENTREE_PRINT_API_TOKEN", "Plugin:AccessToken", "AccessToken", ""),
+            HttpsCertificateThumbprint = https.Thumbprint,
+            HttpsHost = https.Host,
             PrinterProfiles = configuration.GetSection("PrinterProfiles").Get<Dictionary<string, Models.PrinterProfile>>() ?? new(StringComparer.OrdinalIgnoreCase),
             RetryTimeoutMs = ReadInt(configuration, "API_RETRY_TIMEOUT_MS", "Plugin:RetryTimeoutMs", "RetryTimeoutMs", 60000),
             RequestTimeoutMs = ReadInt(configuration, "API_REQUEST_TIMEOUT_MS", "Plugin:RequestTimeoutMs", "RequestTimeoutMs", 3000),

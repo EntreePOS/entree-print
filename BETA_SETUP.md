@@ -25,9 +25,22 @@ Microsoft lists .NET 10 LTS support through November 14, 2028; keep runtime patc
 5. Use the tray's **Windows Service** menu to install/start the packaged service. **Diagnostics** checks service and printer inventory. Enable tray startup from Settings for the signed-in user's logon. A Windows service runs separately from the visible tray.
 6. Bundle `sdk` into the POS and follow [sdk/README.md](sdk/README.md). The service does not serve executable SDK JavaScript. Keep the token in the POS's deployment configuration.
 
-Current service transport is HTTP. Protected LAN transport and browser secure-context/mixed-content behavior remain release gates; do not treat the checksum or website list as encrypted transport.
+HTTP is the default. Optional HTTPS uses a Windows certificate on the same configured port; see below. Installed certificate access and browser/tablet deployment remain release gates. Neither the checksum nor the website list encrypts traffic.
 
 Windows service startup checks configuration and receipt-folder ownership/ACLs before opening the API. Executable paths, including a browser override, must be administrator-protected; user-writable portable executables are rejected. Local Windows users can read configuration and its API token, while receipt files have administrator/SYSTEM-only filesystem permissions. Actual UAC and service-account permission pilots remain required. Development packages in a user-writable source/output folder are not suitable service executables; use the installed Program Files location.
+
+## HTTPS setup
+
+1. Obtain a server certificate from an issuer trusted by your client computers/tablets. Its Subject Alternative Names must cover the DNS name or IP used to connect. Native discovery uses the actual sender IP and requires an IP SAN for that address; the playground's automatic localhost check requires an IP SAN for `127.0.0.1`.
+2. On the service computer, import the certificate and private key into **Certificates (Local Computer) → Personal** using Windows certificate management. Grant the actual Windows service account read access to that private key. The installer does not create certificates, install a trusted issuer or change private-key permissions.
+3. In tray **Settings → Advanced**, enable **Use HTTPS**, enter the certificate host and its Windows thumbprint, then save and restart the service. The host contains no scheme, port or path and must resolve to this computer for tray diagnostics. The listener still follows the configured bind address. HTTPS replaces HTTP on the configured plugin port; it does not add a second listener.
+4. Connect using `protocol: 'https'` and the matching name/IP, as shown in [sdk/README.md](sdk/README.md#https-connections). Retain the API token and permitted website configuration. Verify diagnostics and an authenticated client connection before using it for receipts.
+
+The settings keys are `HttpsCertificateThumbprint` and `HttpsHost`; service environment overrides are `HTTPS_CERTIFICATE_THUMBPRINT` and `HTTPS_HOST`. Both empty means HTTP. Both are required for HTTPS. The service rejects a missing/non-unique certificate, missing private key, invalid dates, host mismatch or incompatible certificate usage. It never falls back to HTTP when HTTPS startup fails. Client trust and private-key access are ultimately checked by the TLS connection; merely finding a certificate does not prove a working deployment.
+
+Renew certificates before expiry. If renewal changes the thumbprint, update the setting and restart; automatic certificate renewal/reload is not implemented. **Reset Default** preserves HTTPS settings and the access token. To disable HTTPS deliberately, clear **Use HTTPS**, save and restart, then change clients to HTTP as appropriate.
+
+Automated tests exercise encrypted Kestrel requests through memory streams, wrong-host and untrusted-issuer rejection, and configuration/discovery behavior. They do not install or trust certificates on this computer or prove an installed service/tablet connection.
 
 ## Jobs and removal
 

@@ -13,7 +13,7 @@ class Socket extends EventEmitter {
   close() { this.closes++; }
 }
 const packet = (overrides = {}) => Buffer.from(JSON.stringify({ ok: true, service: 'entree-print-plugin', protocol: 'entree-print',
-  apiVersion: '0.0.1', serviceId: 'service-id', port: 9779, name: 'Kitchen computer', addresses: ['untrusted-advertised-host'], ...overrides }));
+  apiVersion: '0.0.1', scheme:'http', serviceId: 'service-id', port: 9779, name: 'Kitchen computer', addresses: ['untrusted-advertised-host'], ...overrides }));
 
 function fixture() {
   const clock = new Clock(); const socket = new Socket(); const controller = new AbortController(); const candidates = [];
@@ -49,7 +49,7 @@ test('only compatible datagrams from the discovery port become candidates; adver
   socket.emit('message', packet({ serviceId: 'other-store' }), sender);
   socket.emit('message', packet({ port: '9779' }), sender);
   socket.emit('message', packet(), sender); socket.emit('message', packet(), sender);
-  assert.deepEqual(candidates, [{ ip: '192.168.20.40', port: 9779, serviceId: 'service-id', name: 'Kitchen computer' }]);
+  assert.deepEqual(candidates, [{ ip: '192.168.20.40', port: 9779, protocol:'http', serviceId: 'service-id', name: 'Kitchen computer' }]);
   controller.abort(); await done; assert.equal(socket.closes, 1);
 });
 
@@ -72,6 +72,17 @@ test('failed socket/send paths reject once and release resources', async () => {
     controller.abort(); socket.emit('error', new Error('late error'));
     assert.equal(socket.closes, 1); assert.equal(clock.timers.size, 0);
   }
+});
+
+test('HTTPS announcements retain sender provenance and reject unknown transport schemes', async () => {
+  const { socket, controller, discover, candidates } = fixture();
+  const done = discover({ signal:controller.signal, onCandidate:value=>candidates.push(value) }); socket.listening();
+  const sender = {address:'192.168.20.40',port:18778};
+  for (const scheme of [undefined,'ftp','HTTPS',null]) socket.emit('message',packet({scheme}),sender);
+  assert.equal(candidates.length,0);
+  socket.emit('message',packet({scheme:'https',host:'elsewhere.example.com'}),sender);
+  assert.deepEqual(candidates,[{ip:sender.address,port:9779,protocol:'https',serviceId:'service-id',name:'Kitchen computer'}]);
+  controller.abort(); await done;
 });
 
 test('native adapter bounds candidate delivery and ignores packets after closing', async () => {

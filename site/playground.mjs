@@ -62,18 +62,25 @@ async function connectToService(automatic = false) {
   feedback('connection-status', automatic ? 'Checking the local plugin at 127.0.0.1:9779… You can edit the preview while it connects.' : 'Connecting and reading available printers…');
   try {
     const config = automatic ? { host: '127.0.0.1', port: 9779, protocol: 'http' } : options();
-    if (automatic && $('token').value.length < 32) {
+    if (automatic) {
       // Health is public; printer access still uses the SDK's authenticated handshake.
       const controller = new AbortController();
       const deadline = setTimeout(() => controller.abort(), 3000);
       try {
-        const response = await fetch('http://127.0.0.1:9779/api/health', { signal: controller.signal, credentials: 'omit', cache: 'no-store', redirect: 'error' });
-        const health = response.ok ? await response.json() : null;
-        if (health?.service !== 'entree-print-plugin' || health.apiVersion !== '0.0.1') throw new Error('No compatible local plugin was found.');
-      } finally { clearTimeout(deadline); }
-      const error = new Error('Local plugin found. Enter its access token to connect. Preview mode is ready to use.');
-      error.code = 'AUTH_NOT_CONFIGURED';
-      throw error;
+        const protocols = $('protocol').value === 'https' ? ['https'] : ['http','https'];
+        config.protocol = await Promise.any(protocols.map(async protocol => {
+          const response = await fetch(`${protocol}://127.0.0.1:9779/api/health`, { signal: controller.signal, credentials: 'omit', cache: 'no-store', redirect: 'error' });
+          const health = response.ok ? await response.json() : null;
+          if (health?.service !== 'entree-print-plugin' || health.apiVersion !== '0.0.1') throw new Error('No compatible local plugin was found.');
+          return protocol;
+        }));
+        $('protocol').value = config.protocol;
+      } finally { clearTimeout(deadline); controller.abort(); }
+      if ($('token').value.length < 32) {
+        const error = new Error('Local plugin found. Enter its access token to connect. Preview mode is ready to use.');
+        error.code = 'AUTH_NOT_CONFIGURED';
+        throw error;
+      }
     }
     const connected = await EntreePrint.connect({ ip: config.host, port: config.port, protocol: config.protocol, token: $('token').value, requestTimeoutMs: automatic ? 3000 : 10000 });
     const printers = await connected.getPrinters();

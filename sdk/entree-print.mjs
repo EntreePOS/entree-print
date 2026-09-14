@@ -226,12 +226,12 @@ export function createEntreePrint(options = {}, dependencies = {}) {
         info.apiVersion !== '0.0.1' || !Array.isArray(info.printers) || info.printers.some(printer => typeof printer?.name !== 'string' || !printer.name))
         fail('PROTOCOL_UNSUPPORTED', 'The endpoint did not return a compatible 0.0.1 connection.');
       if (!info.printers.length) fail('NO_PRINTERS', 'This service has no installed printers.', { details: { serviceId: info.serviceId } });
-      return { ...info, ip: this.config.ip, port: this.config.port };
+      return { ...info, ip: this.config.ip, port: this.config.port, protocol: this.config.protocol };
     }
     adopt(info, order = this.handshakeOrder) {
       this.identity = info.serviceId;
       // Credentials and monitoring deadlines are part of the trust/policy boundary.
-      const key = JSON.stringify([this.identity, this.config.token, this.config.requestTimeoutMs, canonical(this.config.heartbeat)]);
+      const key = JSON.stringify([this.identity, this.config.protocol, this.config.token, this.config.requestTimeoutMs, canonical(this.config.heartbeat)]);
       let owner = monitors.get(key);
       if (!owner || owner.disabled) { owner = this; monitors.set(key, owner); }
       owner.monitorMembers.add(this); this.monitorOwner = owner;
@@ -424,6 +424,7 @@ export function createEntreePrint(options = {}, dependencies = {}) {
       if (this.completed || this.endpoints.size >= 64) return;
       try {
         if (!candidate || (this.options.serviceId && candidate.serviceId && candidate.serviceId !== this.options.serviceId)) return;
+        if (this.config.protocol === 'https' && candidate.protocol === 'http') return;
         const config = settings(this.config, { ip: candidate.ip, port: candidate.port,
           protocol: candidate.protocol ?? this.config.protocol });
         if (this.endpoints.has(config.baseUrl)) return;

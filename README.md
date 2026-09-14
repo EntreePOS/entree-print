@@ -104,7 +104,7 @@ Until the installer is ready, use a verified development package built from sour
 
 The printer icon lives near the Windows clock and may be inside the hidden-icons arrow. Opening the tray EXE again brings Settings forward. The tray and Windows service are separate processes.
 
-Current prerequisites are Windows x64, .NET/ASP.NET Core/Windows Desktop 10.0.12 or a later 10.0 patch, and Microsoft Edge or Google Chrome for layout preparation. Current service transport is HTTP; protected LAN transport and browser access are still under verification. Do not mistake the website origin list or a checksum for encryption.
+Current prerequisites are Windows x64, .NET/ASP.NET Core/Windows Desktop 10.0.12 or a later 10.0 patch, and Microsoft Edge or Google Chrome for layout preparation. HTTP is the default; optional [HTTPS setup](BETA_SETUP.md#https-setup) uses a Windows server certificate. Installed certificate access and browser/tablet connections still require deployment verification. Neither the website origin list nor a checksum encrypts traffic.
 
 ## Develop and verify
 
