@@ -87,6 +87,32 @@ test('lost ACK recovery after SDK replacement resends exact saved bytes without 
   assert.equal(jobs.size, 1);
 });
 
+for (const firstOutcome of ['lost acknowledgement', 'failed acceptance save']) test(`outbox preserves ${firstOutcome} across restart and later rejection`, async t => {
+  const { client, faults, calls, jobs, store } = harness(t);
+  const api = client(), selector = { serviceId: 'server', idempotencyKey: 'one' };
+  await api.outbox().enqueue(intent()); await api.outbox().enqueue(intent('two'));
+  const print = await api.connect();
+  if (firstOutcome === 'lost acknowledgement') {
+    faults.loseAck = true; await api.outbox().flush(print);
+  } else {
+    store.failState = 'accepted';
+    await assert.rejects(api.outbox().flush(print), { code: 'OUTBOX_STORAGE_FAILED' });
+  }
+  assert.equal(store.records[0].mayHaveAccepted, true);
+  const originalWire = structuredClone(store.records[0].wire);
+  api.disconnect(); store.failState = null; faults.loseAck = false; faults.reject = 'RENDER_EXPIRED';
+  const next = client(), connected = await next.connect();
+  for (let attempt = 0; attempt < 2; attempt++) {
+    if (attempt) await next.outbox().retry(selector);
+    const [record] = await next.outbox().flush(connected);
+    assert.equal(record.state, 'uncertain'); assert.equal(record.error.delivery, 'unknown');
+    assert.equal(record.mayHaveAccepted, true); assert.deepEqual(record.wire, originalWire);
+    assert.equal(store.records[1].state, 'pending');
+  }
+  assert.equal(jobs.size, 1); assert.equal(calls.filter(call => call.path === '/api/renders').length, 1);
+  assert.equal(new Set(calls.filter(call => call.path === '/api/jobs').map(call => call.wire)).size, 1);
+});
+
 for (const state of ['add', 'prepared', 'submitting', 'accepted']) test(`storage failure at ${state} preserves recoverability`, async t => {
   const { client, store, jobs, calls } = harness(t); const api = client();
   store.failState = state;

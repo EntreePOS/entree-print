@@ -92,7 +92,7 @@ export function createOutboxController(storage, transport) {
       // Snapshot before the first await so checkout mutations cannot edit the ticket.
       const source = transport.validate(value);
       const fingerprint = await transport.fingerprint(source);
-      const result = await saved(() => storage.add({ ...source, fingerprint, state: 'pending', wire: null,
+      const result = await saved(() => storage.add({ ...source, fingerprint, state: 'pending', wire: null, mayHaveAccepted: false,
         createdAt: new Date().toISOString(), job: null, error: null }));
       if (result.fingerprint !== fingerprint) throw failure('OUTBOX_CONFLICT', 'This intent key already belongs to a different ticket.');
       return clone(result);
@@ -132,21 +132,24 @@ export function createOutboxController(storage, transport) {
           if (record.state === 'needs_attention') { outcomes.push(clone(record)); break; }
           if (await transport.fingerprint(transport.validate(record, true)) !== record.fingerprint)
             throw failure('OUTBOX_CORRUPT', 'A saved receipt failed its content check.');
+          const previouslyUncertain = record.mayHaveAccepted === true || ['submitting', 'uncertain'].includes(record.state) && record.mayHaveAccepted !== false;
           try {
             if (!record.wire) {
               const wire = await transport.prepare(library, record);
               record = await saved(() => storage.update(record, { ...record, wire, state: 'prepared', error: null }));
             }
             // This commit must precede any job POST, including the very first attempt.
-            record = await saved(() => storage.update(record, { ...record, state: 'submitting', error: null }));
+            record = await saved(() => storage.update(record, { ...record, state: 'submitting', mayHaveAccepted: true, error: null }));
             const job = await transport.submit(library, record);
             record = await saved(() => storage.update(record, { ...record, state: 'accepted', job, error: null }));
             outcomes.push(clone(record));
           } catch (error) {
             // A storage error may occur after the plugin accepted. Never replace its saved wire.
             if (error.code?.startsWith?.('OUTBOX_')) throw error;
+            const mayHaveAccepted = previouslyUncertain || error.delivery !== 'not_sent';
+            if (mayHaveAccepted) error.delivery = 'unknown';
             const state = error.delivery === 'unknown' ? 'uncertain' : error.retryable ? (record.wire ? 'prepared' : 'pending') : 'needs_attention';
-            record = await saved(() => storage.update(record, { ...record, state,
+            record = await saved(() => storage.update(record, { ...record, state, mayHaveAccepted,
               error: { code: error.code || 'PRINT_FAILED', message: error.message, delivery: error.delivery || 'unknown' } }));
             outcomes.push(clone(record));
             break;

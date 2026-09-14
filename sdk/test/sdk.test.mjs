@@ -337,6 +337,51 @@ test('invalid ACK is uncertain, exposes the retained key, and a later caller ret
   assert.deepEqual(writes[0].init.body, writes[1].init.body);
 });
 
+for (const operation of ['receipt', 'beep', 'reprint']) test(`${operation} retains uncertainty when an automatic retry is rejected`, async t => {
+  const { api, state, clock, calls } = harness(t);
+  await api.connect();
+  let submissions = 0;
+  state.hook = call => {
+    if (call.url.pathname !== '/api/jobs' && !call.url.pathname.endsWith('/reprints')) return;
+    if (++submissions === 1) throw new TypeError('ACK lost after possible acceptance');
+    return rejected('UNAUTHORIZED');
+  };
+  const options = { idempotencyKey: 'retained-intent' };
+  const action = operation === 'receipt' ? api.target('Kitchen').setContent('<p>Receipt</p>').print(options)
+    : operation === 'beep' ? api.target('Kitchen').beep(options) : api.reprintJob('original', options);
+  const check = assert.rejects(action, error => error.code === 'UNAUTHORIZED' && error.delivery === 'unknown'
+    && error.details.idempotencyKey === options.idempotencyKey);
+  while (!submissions) await new Promise(resolve => setImmediate(resolve));
+  await flush(); await clock.advance(0); await check;
+  const writes = calls.filter(call => call.url.pathname === '/api/jobs' || call.url.pathname.endsWith('/reprints'));
+  assert.equal(writes.length, 2); assert.deepEqual(writes[0].init.body, writes[1].init.body);
+});
+
+for (const firstOutcome of ['lost acknowledgement', 'accepted']) test(`later preview rejection cannot erase ${firstOutcome}`, async t => {
+  const { api, state, calls, clock } = harness(t, { retryCount: 0 });
+  const ticket = api.target('Kitchen').setContent('<p>Receipt</p>');
+  if (firstOutcome === 'lost acknowledgement') {
+    state.hook = call => { if (call.url.pathname === '/api/jobs') throw new TypeError('ACK lost'); };
+    await assert.rejects(ticket.print({ idempotencyKey: 'retained' }), { delivery: 'unknown' });
+  } else await ticket.print({ idempotencyKey: 'retained' });
+  state.hook = call => call.url.pathname === '/api/jobs' ? rejected('RENDER_EXPIRED') : null;
+  await assert.rejects(ticket.print({ idempotencyKey: 'retained' }), { code: 'RENDER_EXPIRED', delivery: 'unknown' });
+  clock.now += 10001; await ticket.render();
+  await assert.rejects(ticket.print({ idempotencyKey: 'retained' }), { code: 'RENDER_EXPIRED', delivery: 'unknown' });
+  const writes = calls.filter(call => call.url.pathname === '/api/jobs');
+  assert.equal(writes.length, 3);
+  for (const write of writes) assert.deepEqual(write.init.body, writes[0].init.body);
+});
+
+test('disconnect before a later retry preserves the ticket original uncertainty', async t => {
+  const { api, state } = harness(t, { retryCount: 0 });
+  const ticket = api.target('Kitchen').setContent('<p>Receipt</p>');
+  state.hook = call => { if (call.url.pathname === '/api/jobs') throw new TypeError('ACK lost'); };
+  await assert.rejects(ticket.print({ idempotencyKey: 'retained' }), { delivery: 'unknown' });
+  api.disconnect();
+  await assert.rejects(ticket.print({ idempotencyKey: 'retained' }), { code: 'NOT_CONNECTED', delivery: 'unknown' });
+});
+
 test('expired reviewed preview is sent unchanged; print never silently prepares a different layout', async t => {
   const { api, state, clock, calls } = harness(t);
   const ticket = api.target('Kitchen').setContent('<p>Receipt</p>').setWidth(72);

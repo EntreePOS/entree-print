@@ -21,7 +21,7 @@ function harness(t, outboxStorage) {
       if (server.offline) throw new TypeError('Network down');
       if (address.pathname === '/api/connection') {
         if (server.pending) return server.pending;
-        return json({serviceId:server.identity ?? name, bootId:'boot', apiVersion:'0.0.1', printers:server.empty ? [] :
+        return json({serviceId:server.identity ?? name, bootId:'boot', apiVersion:'0.0.1', printers:server.empty ? [] : server.printers ??
           [{name:'Kitchen',connection:{type:'network',host:'192.168.1.80'}},{name:'cashier',connection:{type:'usb',host:null}}]});
       }
       if (address.pathname === '/api/printers') return json([{name:'Kitchen'},{name:'cashier'}]);
@@ -148,6 +148,19 @@ test('backup connection cannot move USB receipts or device commands; explicit ow
   const direct = await api.connect(node('backup'));
   assert.equal(direct.connection.nodeSelection,undefined);
   assert.equal((await direct.target('cashier').openDrawer({idempotencyKey:'explicit-device'})).serviceId,'backup');
+});
+
+test('changed backup eligibility cannot erase an earlier possible receipt acceptance', async t => {
+  const {api,state,calls} = harness(t); state.primary.offline = true;
+  const print = await api.connect({nodes:nodes()});
+  const ticket = print.target('Kitchen').setContent('<p>Retained</p>');
+  state.backup.loseAck = true;
+  await assert.rejects(ticket.print({idempotencyKey:'retained'}), {delivery:'unknown'});
+  state.backup.printers = [{name:'Kitchen',connection:{type:'unknown'}}];
+  await api.connect(node('backup'));
+  const count = calls.length;
+  await assert.rejects(ticket.print({idempotencyKey:'retained'}), {code:'PRINTER_OWNER_REQUIRED',delivery:'unknown'});
+  assert.equal(calls.length,count);
 });
 
 test('lost acknowledgement stays on its original ticket owner after selecting a backup', async t => {

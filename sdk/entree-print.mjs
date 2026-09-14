@@ -347,34 +347,44 @@ export function createEntreePrint(options = {}, dependencies = {}) {
       }
     }
     async read(path) { await this.ready(); return this.request(path); }
-    async submit(wire, key, path = '/api/jobs', reprintOf) {
-      if (this.nodeSelection?.usedBackup) {
-        if (reprintOf !== undefined)
-          fail('JOB_OWNER_REQUIRED', 'Connect directly to the original job owner to request a reprint.');
-        const body = JSON.parse(new TextDecoder().decode(wire.bytes));
-        verifyBackupDestination(this, body.printer, body.type !== 'print' || !!trailingOptions(body.after));
-      }
-      await this.ready();
-      for (let attempt = 0; ; attempt++) {
-        try {
-          const result = await this.request(path, { wire });
-          if (result?.serviceId !== this.identity || result.idempotencyKey !== key || typeof result.id !== 'string' || result.integrity?.verified !== true
-              || (reprintOf !== undefined && result.reprintOf !== reprintOf))
-            fail('ACK_INVALID', 'The acknowledgement does not identify this service and print intent.', { delivery: 'unknown', retryable: true });
-          return result;
-        } catch (error) {
-          error.details = { ...error.details, serviceId: this.identity, idempotencyKey: key };
-          if (!error.retryable || attempt >= this.config.retryCount || this.disabled) throw error;
-          await new Promise((resolve, reject) => {
-            const signal = this.lifetime.signal;
-            const cancel = () => { io.clearTimeout(timer); reject(new EntreePrintError('NOT_CONNECTED', 'The client was disconnected.',
-              { delivery: 'unknown', details: { serviceId: this.identity, idempotencyKey: key } })); };
-            const timer = io.setTimeout(() => { signal.removeEventListener('abort', cancel); resolve(); }, this.config.retryDelayMs);
-            signal.addEventListener('abort', cancel, { once: true });
-            if (signal.aborted) cancel();
-          });
+    async submit(wire, key, path = '/api/jobs', reprintOf, evidence = { mayHaveAccepted: false }) {
+      const preserveDelivery = error => {
+        // A rejection describes this attempt, not an earlier request whose ACK was lost.
+        evidence.mayHaveAccepted ||= error.delivery !== 'not_sent';
+        if (evidence.mayHaveAccepted) error.delivery = 'unknown';
+        error.details = { ...error.details, serviceId: this.identity, idempotencyKey: key };
+        return error;
+      };
+      try {
+        if (this.nodeSelection?.usedBackup) {
+          if (reprintOf !== undefined)
+            fail('JOB_OWNER_REQUIRED', 'Connect directly to the original job owner to request a reprint.');
+          const body = JSON.parse(new TextDecoder().decode(wire.bytes));
+          verifyBackupDestination(this, body.printer, body.type !== 'print' || !!trailingOptions(body.after));
         }
-      }
+        await this.ready();
+        for (let attempt = 0; ; attempt++) {
+          try {
+            const result = await this.request(path, { wire });
+            if (result?.serviceId !== this.identity || result.idempotencyKey !== key || typeof result.id !== 'string' || result.integrity?.verified !== true
+                || (reprintOf !== undefined && result.reprintOf !== reprintOf))
+              fail('ACK_INVALID', 'The acknowledgement does not identify this service and print intent.', { delivery: 'unknown', retryable: true });
+            evidence.mayHaveAccepted = true;
+            return result;
+          } catch (error) {
+            preserveDelivery(error);
+            if (!error.retryable || attempt >= this.config.retryCount || this.disabled) throw error;
+            await new Promise((resolve, reject) => {
+              const signal = this.lifetime.signal;
+              const cancel = () => { io.clearTimeout(timer); reject(new EntreePrintError('NOT_CONNECTED', 'The client was disconnected.',
+                { delivery: 'unknown', details: { serviceId: this.identity, idempotencyKey: key } })); };
+              const timer = io.setTimeout(() => { signal.removeEventListener('abort', cancel); resolve(); }, this.config.retryDelayMs);
+              signal.addEventListener('abort', cancel, { once: true });
+              if (signal.aborted) cancel();
+            });
+          }
+        }
+      } catch (error) { throw preserveDelivery(error); }
     }
   }
 
@@ -587,16 +597,16 @@ export function createEntreePrint(options = {}, dependencies = {}) {
     }
     async print(options = {}) {
       const supplied = printOptions(options, true);
-      verifyBackupDestination(this.#session, this.#printer, !!supplied.after);
       const key = supplied.idempotencyKey ?? (this.#defaultKey ??= randomKey());
       const metadata = JSON.stringify(canonical(supplied.metadata ?? {}));
       const signature = JSON.stringify({ metadata, after:supplied.after });
       let intent = this.#intents.get(key);
       if (intent && intent.signature !== signature) fail('IDEMPOTENCY_CONFLICT', 'This ticket already uses the key with different metadata or trailing actions.');
       if (!intent) {
+        verifyBackupDestination(this.#session, this.#printer, !!supplied.after);
         // Capture the preparation promise and bytes once. Later render() calls cannot change a retry.
         const rendering = this.#rendering ?? this.render();
-        intent = { signature, wire: rendering.then(result => encode({ type: 'print', printer: this.#printer,
+        intent = { signature, evidence: { mayHaveAccepted: false }, wire: rendering.then(result => encode({ type: 'print', printer: this.#printer,
           renderId: result.id, idempotencyKey: key, metadata: JSON.parse(metadata), ...(supplied.after ? {after:supplied.after} : {}) })), inFlight: null };
         this.#intents.set(key, intent);
         const captured = intent;
@@ -604,7 +614,7 @@ export function createEntreePrint(options = {}, dependencies = {}) {
       }
       if (!intent.inFlight) {
         const captured = intent;
-        const pending = intent.wire.then(wire => this.#session.submit(wire, key)).catch(error => {
+        const pending = intent.wire.then(wire => this.#session.submit(wire, key, '/api/jobs', undefined, captured.evidence)).catch(error => {
           // Only this authoritative rejection allows the operator to prepare a new preview for the same intent.
           // An unknown ACK/transport outcome always retains the original wire bytes.
           if (error.code === 'RENDER_EXPIRED' && error.delivery === 'not_sent' && this.#intents.get(key) === captured)

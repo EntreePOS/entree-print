@@ -117,7 +117,7 @@ test('native factory uses its supplied SQLite store before any connection', asyn
 });
 
 test('a new SDK and SQLite store recover a lost acknowledgement using identical saved bytes', async t => {
-  const path = await directory(t), wires = []; let renders = 0, loseAck = true;
+  const path = await directory(t), wires = []; let renders = 0, loseAck = true, rejectNext = false;
   const client = async () => {
     const storage = await createSqliteOutboxStorage({directory:path});
     const api = createEntreePrint({token:'t'.repeat(32),retryCount:0},{crypto:webcrypto,outboxStorage:storage,
@@ -131,7 +131,12 @@ test('a new SDK and SQLite store recover a lost acknowledgement using identical 
         wires.push(new TextDecoder().decode(options.body));
         const [saved] = await storage.list();
         assert.equal(saved.state,'submitting'); assert.equal(saved.wire.json,wires.at(-1));
+        assert.equal(saved.mayHaveAccepted,true);
         if (loseAck) throw new TypeError('Lost ACK');
+        if (rejectNext) {
+          rejectNext = false;
+          return new Response(JSON.stringify({error:{code:'UNAUTHORIZED',delivery:'not_sent'}}),{status:401});
+        }
         return json({id:'original-job',serviceId:'owner',idempotencyKey:body.idempotencyKey,state:'accepted',integrity:{verified:true}});
       }});
     return {api,storage};
@@ -140,11 +145,17 @@ test('a new SDK and SQLite store recover a lost acknowledgement using identical 
   await first.api.outbox().enqueue({serviceId:'owner',printer:'cashier',idempotencyKey:'original',content:'<p>厨房</p>'});
   assert.equal((await first.api.outbox().flush(await first.api.connect()))[0].state,'uncertain');
   first.api.disconnect(); first.storage.close(); loseAck = false;
+  const rejected = await client(); rejectNext = true;
+  try {
+    const [retained] = await rejected.api.outbox().flush(await rejected.api.connect());
+    assert.equal(retained.state,'uncertain'); assert.equal(retained.error.delivery,'unknown');
+    assert.equal(retained.mayHaveAccepted,true);
+  } finally { rejected.api.disconnect(); rejected.storage.close(); }
   const next = await client(), concurrent = await client();
   try {
     const libraries = await Promise.all([next.api.connect(),concurrent.api.connect()]);
     const outcomes = (await Promise.all([next.api.outbox().flush(libraries[0]),concurrent.api.outbox().flush(libraries[1])])).flat();
     assert.equal(outcomes.length,1); assert.equal(outcomes[0].job.id,'original-job');
-    assert.equal(renders,1); assert.equal(wires.length,2); assert.equal(wires[0],wires[1]);
+    assert.equal(renders,1); assert.equal(wires.length,3); assert.equal(new Set(wires).size,1);
   } finally { next.api.disconnect(); next.storage.close(); concurrent.api.disconnect(); concurrent.storage.close(); }
 });

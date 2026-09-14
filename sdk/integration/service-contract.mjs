@@ -30,6 +30,7 @@ const control = (control, extra = {}) => exchange({ control, ...extra });
 const jobWires = [];
 let faults = [];
 let corruptNextRequest = false;
+let rejectNextSubmissionAuth = false;
 let renderCalls = 0;
 function createClient(outboxStorage) { return createEntreePrint({ token: 't'.repeat(32), retryCount: 1, retryDelayMs: 1,
   requestTimeoutMs: 15000, renderTimeoutMs: 30000, heartbeat: { intervalMs: 60000 } }, {
@@ -46,7 +47,11 @@ function createClient(outboxStorage) { return createEntreePrint({ token: 't'.rep
         bytes = Buffer.concat([bytes, Buffer.from(' ')]); // Valid JSON, wrong exact-byte digest.
       }
     }
-    const result = await exchange({ url, method: options.method, headers: options.headers,
+    const headers = { ...options.headers };
+    if (path === '/api/jobs' && options.method === 'POST' && rejectNextSubmissionAuth) {
+      rejectNextSubmissionAuth = false; headers.Authorization = 'Bearer invalid-token';
+    }
+    const result = await exchange({ url, method: options.method, headers,
       bodyBase64: bytes?.toString('base64') ?? null });
     if (path === '/api/jobs' && options.method === 'POST' && result.status < 300) {
       const fault = faults.shift();
@@ -90,11 +95,13 @@ async function lostAck() {
   assert.equal(restarted.serviceId, connection.serviceId);
   assert.notEqual(restarted.bootId, connection.bootId);
   await api.connect();
+  rejectNextSubmissionAuth = true;
+  await assert.rejects(ticket.print({ idempotencyKey: 'lost-ack', metadata }), { code: 'UNAUTHORIZED', delivery: 'unknown' });
   const recovered = await ticket.print({ idempotencyKey: 'lost-ack', metadata });
   assert.equal(recovered.state, 'completed');
   assert.equal(recovered.id, before.jobs[0].id);
   assert.equal(renderCalls, 1);
-  assert.equal(jobWires.length, 3);
+  assert.equal(jobWires.length, 4);
   assert.equal(new Set(jobWires).size, 1);
   assert.equal((await api.getJobRender(recovered.id)).html, preview.html);
   const history = await api.getJobs(kitchen, { station: metadata.station, orderID: metadata.orderID });

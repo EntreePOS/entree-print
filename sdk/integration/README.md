@@ -24,4 +24,6 @@ Scenarios:
 
 The integrated status lookup exposed a path-encoding bug for `/` in queue names. Status now uses `GET /api/printers/status?printer={encodedName}&refresh=true`. Additional handler tests cover Chinese/slash names, literal percent sequences, ampersands, plus/hash characters, UNC-style names, and missing/duplicate query values.
 
+The lost-acknowledgement scenario also sends a later request with an invalid token to the actual authorization handler after ledger reopen. Its rejection remains `delivery: 'unknown'` in the SDK because the earlier accepted receipt still exists. Restoring authorization recovers that same completed job with identical bytes and one backend delivery. Native SQLite recovery separately reopens through a lost ACK, a later rejection and concurrent final recovery without erasing uncertainty.
+
 This verifies SDK/service interoperability under simulated transport faults. It does not establish live HTTP/TLS, Wi-Fi, discovery, spooler or hardware behavior. The separate Node unit suite remains `node --test sdk/test/*.test.mjs`.
