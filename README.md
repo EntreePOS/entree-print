@@ -72,7 +72,7 @@ An accepted job means the plugin saved it. Windows completion is a separate obse
 
 ## Optional client outbox
 
-The browser/Electron renderer SDK can retain unsent receipts in IndexedDB. Call `enqueue()` before network submission, then `flush()` with the owning connected library. Each printer progresses in order; another printer can proceed independently.
+The browser/Electron renderer SDK can retain unsent receipts in IndexedDB. Node/Electron main clients can use the optional [SQLite outbox](sdk/README.md#node-and-electron-main-storage). Call `enqueue()` before network submission, then `flush()` with the owning connected library. Each printer progresses in order; another printer can proceed independently.
 
 ```javascript
 const outbox = EntreePrint.outbox();

@@ -214,11 +214,12 @@ async function keyLookupAfterReload() {
   } finally { fresh.disconnect(); }
 }
 
-async function durableClientOutbox() {
+async function durableClientOutbox(sqlite = false) {
   const directory = await mkdtemp(join(tmpdir(), 'EntreeClientOutbox-'));
   const file = join(directory, 'intents.json');
   // Test adapter only: one Node dispatcher; production browser storage has Web Locks.
-  function storage() {
+  async function storage() {
+    if (sqlite) return (await import('../sqlite-outbox.mjs')).createSqliteOutboxStorage({ directory });
     const list = async () => { try { return JSON.parse(await readFile(file, 'utf8')); } catch (error) { if (error.code === 'ENOENT') return []; throw error; } };
     const save = async records => {
       const temp = file + '.tmp'; const handle = await open(temp, 'wx');
@@ -243,16 +244,16 @@ async function durableClientOutbox() {
   try {
     const setup = await api.connect();
     const owner = setup.connection.serviceId; api.disconnect();
-    const first = createClient(storage()); clients.push(first);
+    const first = createClient(await storage()); clients.push(first);
     await first.outbox().enqueue({ serviceId: owner, idempotencyKey: 'durable-client-outbox', printer: kitchen, content: html, metadata });
     assert.equal(renderCalls, 0); assert.equal(jobWires.length, 0); first.disconnect();
-    const second = createClient(storage()); clients.push(second);
+    const second = createClient(await storage()); clients.push(second);
     faults = ['lost', 'lost'];
     const uncertain = await second.outbox().flush(await second.connect({ serviceId: owner }));
     assert.equal(uncertain[0].state, 'uncertain'); await waitState('durable-client-outbox', 'completed');
     second.disconnect();
     await control('expireReceipts'); await control('restart', { expirePreviews: true });
-    const third = createClient(storage()); clients.push(third);
+    const third = createClient(await storage()); clients.push(third);
     const recovered = await third.outbox().flush(await third.connect({ serviceId: owner }));
     assert.equal(recovered[0].state, 'accepted'); assert.equal(recovered[0].job.state, 'completed');
     assert.equal(renderCalls, 1); assert.equal(new Set(jobWires).size, 1);
@@ -273,6 +274,7 @@ try {
   else if (scenario === 'retention') await retention();
   else if (scenario === 'key-lookup') await keyLookupAfterReload();
   else if (scenario === 'outbox') await durableClientOutbox();
+  else if (scenario === 'sqlite-outbox') await durableClientOutbox(true);
   else throw new Error(`Unknown scenario: ${scenario}`);
   process.stdout.write(JSON.stringify({ done: true, scenario }) + '\n');
 } catch (error) {

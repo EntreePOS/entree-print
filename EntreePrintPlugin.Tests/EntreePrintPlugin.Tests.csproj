@@ -18,6 +18,7 @@
     <Using Include="Xunit" />
     <Content Include="..\sdk\entree-print.mjs" Link="sdk\entree-print.mjs" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\sdk\outbox.mjs" Link="sdk\outbox.mjs" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\sdk\sqlite-outbox.mjs" Link="sdk\sqlite-outbox.mjs" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\sdk\integration\service-contract.mjs" Link="sdk\integration\service-contract.mjs" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 

@@ -31,6 +31,10 @@ jobs:
         run: |
           dotnet test EntreePrintPlugin.Tests/EntreePrintPlugin.Tests.csproj --artifacts-path "$env:RUNNER_TEMP\build-tests" --logger "trx;LogFileName=tests.trx" --results-directory "$env:RUNNER_TEMP\installer-evidence"
           if ($LASTEXITCODE -ne 0) { throw 'Application tests failed.' }
+          npm test --prefix sdk
+          if ($LASTEXITCODE -ne 0) { throw 'SDK tests failed.' }
+          npm run test:sqlite --prefix sdk
+          if ($LASTEXITCODE -ne 0) { throw 'Native outbox tests failed.' }
           & ./scripts/test-installer.ps1
       - name: Build the self-contained package
         run: |

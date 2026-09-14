@@ -1,6 +1,6 @@
 # SDK and service contract checks
 
-Run from the repository root with Node.js on PATH and the project's .NET SDK installed:
+Run from the repository root with Node.js 22.13+ (`node:sqlite` enabled) on PATH and the project's .NET SDK installed:
 
 ```powershell
 dotnet test EntreePrintPlugin.Tests/EntreePrintPlugin.Tests.csproj --artifacts-path "$env:TEMP\EntreeSdkServiceIntegration" --filter FullyQualifiedName~SdkServiceIntegrationTests
@@ -18,6 +18,7 @@ Scenarios:
 - Complete a receipt, advance the service clock beyond retention, compact its layout and reopen the service/ledger. The actual SDK replays the original bytes to the same completed job; history remains, preview/new reprint return `ARTIFACT_EXPIRED`, and the backend is called only once.
 - Save only the intent key and service ID to a flushed temporary client checkpoint before printing, lose both acknowledgements, expire the layout and reopen the service. Disconnect the old SDK, create a new SDK instance and recover the completed job from that checkpoint with `getJob({ idempotencyKey })`. No additional render or submission occurs and backend delivery stays at one. This models lost SDK memory; it does not kill the Node process or implement the POS outbox.
 - Enqueue unsent content in a flushed file-backed client fixture before connecting, replace the SDK, submit through the production API and lose both acknowledgements. Expire the accepted layout, reopen service storage, replace the SDK again and flush the original persisted request. The bytes remain identical, Chromium prepares once, and the backend receives one receipt. The file adapter is test-only; the production browser adapter uses IndexedDB and Web Locks.
+- Repeat that outbox scenario with the production SQLite adapter, reopening its store for each new SDK. The saved wire survives expired layouts and service ledger reopen; recovery returns the original completed job with one backend delivery. Separate native tests kill a real lock-owning Node process and verify lock release plus retained committed wire; the TestServer scenario itself does not kill a process.
 
 The integrated status lookup exposed a path-encoding bug for `/` in queue names. Status now uses `GET /api/printers/status?printer={encodedName}&refresh=true`. Additional handler tests cover Chinese/slash names, literal percent sequences, ampersands, plus/hash characters, UNC-style names, and missing/duplicate query values.
 

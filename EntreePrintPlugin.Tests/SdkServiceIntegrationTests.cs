@@ -15,6 +15,7 @@ public sealed class SdkServiceIntegrationTests
     [InlineData("retention", 1)]
     [InlineData("key-lookup", 1)]
     [InlineData("outbox", 1)]
+    [InlineData("sqlite-outbox", 1)]
     public async Task ActualSdk_UsesServicePipelineAndDurableLedger(string scenario, int expectedDeliveries)
     {
         await using var host = await V2EndpointTests.Harness.Start(new PluginSettings

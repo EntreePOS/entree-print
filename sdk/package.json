@@ -3,7 +3,7 @@
   "version": "0.0.1-beta",
   "private": true,
   "type": "module",
-  "exports": { ".": "./entree-print.mjs", "./native": "./native.mjs", "./native-discovery": "./native-discovery.mjs" },
-  "scripts": { "test": "node --test test/*.test.mjs" },
+  "exports": { ".": "./entree-print.mjs", "./native": "./native.mjs", "./native-discovery": "./native-discovery.mjs", "./sqlite-outbox": "./sqlite-outbox.mjs" },
+  "scripts": { "test": "node --test test/*.test.mjs", "test:sqlite": "node --test test/native/sqlite-outbox.test.mjs" },
   "engines": { "node": ">=18" }
 }

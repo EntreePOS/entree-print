@@ -152,7 +152,31 @@ The outbox handles receipt jobs only. It does not automatically replay drawer, b
 
 Storage is scoped to this application origin and capped at 10,000 local records; full storage returns `OUTBOX_FULL` without evicting old keys. Records currently retain content, wire and acceptance evidence; automatic local pruning/export remains unfinished. Storage commits request strict IndexedDB durability and wait for transaction completion. Older engines may ignore that hint; no universal power-loss guarantee is claimed. Clearing site data removes this local history. Locks coordinate tabs on the same origin, not different tablets. See [IndexedDB transaction durability](https://developer.mozilla.org/en-US/docs/Web/API/IDBDatabase/transaction) and [Web Locks](https://developer.mozilla.org/en-US/docs/Web/API/Web_Locks_API).
 
-Node/Electron main has no built-in IndexedDB. Applications there may pass a transactional `outboxStorage` dependency to `createEntreePrint`; there is no production file adapter yet. Its required methods are `list`, `add`, `update(previous, next)` and `withQueue(serviceId, printer, work)`. Inserts must atomically deduplicate `(serviceId, idempotencyKey)`, updates must compare versions, and queue locks must span all dispatchers sharing that storage. Do not substitute an in-memory map or unlocked JSON writes for durable storage.
+### Node and Electron main storage
+
+Use the optional SQLite adapter in a runtime with [`node:sqlite`](https://nodejs.org/api/sqlite.html) enabled (Node 22.13+; tested on Node 24.19). Electron must provide that module in its embedded Node runtime. Importing the normal native SDK does not load SQLite or create storage.
+
+```javascript
+import { join } from 'node:path';
+import { createSqliteOutboxStorage } from './sqlite-outbox.mjs';
+import { createNativeEntreePrint } from './native.mjs';
+
+// In Electron, applicationDataDirectory can be app.getPath('userData').
+const storage = await createSqliteOutboxStorage({
+  directory: join(applicationDataDirectory, 'print-outbox')
+});
+const EntreePrint = createNativeEntreePrint(settings.connection, { outboxStorage: storage });
+const outbox = EntreePrint.outbox();
+// Use the same enqueue/flush/retry methods shown above.
+```
+
+Choose an application-owned directory on a **local disk**, accessible only to the application's trusted Windows account. Network shares, synced folders and copied databases are not supported for shared dispatch. Every local process must use the same directory. The store retains intent keys, source, exact wire and ACK evidence across process restarts. It caps records at 10,000 and rejects new work when full without evicting history. Corrupt or unsupported databases fail without being reset. Keep the database and any SQLite journal files together; do not delete individual files to repair or unlock it.
+
+Writes use short SQLite transactions with `synchronous=FULL`. Each destination has a separate SQLite lock file, so the process can commit request bytes before submitting while retaining its dispatch lock. OS locks release on process exit; they do not expire while a suspended process might still submit. A busy destination returns `OUTBOX_BUSY` after the configured `lockTimeoutMs` (default 10 seconds), without affecting another destination. This coordinates processes on one local machine, not different tablets or print servers. SQLite's [locking and journal recovery](https://www.sqlite.org/lockingv3.html) depend on the local filesystem; process-exit tests are not proof against every disk or power failure.
+
+Call `storage.close()` after awaited outbox work finishes; it rejects closure during active operations. SDK `disconnect()` stops connections but does not close application-owned storage. Automatic pruning/export and background dispatch after the application closes remain unimplemented.
+
+Applications may alternatively pass their own transactional `outboxStorage` to either factory. Required methods are `list`, `add`, `update(previous, next)` and `withQueue(serviceId, printer, work)`. Inserts must atomically deduplicate `(serviceId, idempotencyKey)`, updates must compare versions, and queue locks must span all dispatchers sharing that storage. Do not substitute an in-memory map or unlocked JSON writes for durable storage.
 
 Targets retain the service identity selected when created. Reconfiguring the default cannot send an existing ticket to another service. A different service occupying that address is rejected; verified recovery may update its endpoint for the same identity. Within one SDK client, identical configurations reuse a session and concurrent handshake. Verified aliases of the same service share one heartbeat/recovery monitor when their token, request deadline and heartbeat policy match. Different credentials or monitoring policies remain separate. Each caller gets its own connection-result copy.
 
@@ -168,9 +192,11 @@ Use a modern browser/Electron/Node runtime with Fetch, TextEncoder, AbortControl
 
 ```powershell
 node --test sdk/test/*.test.mjs
+# Optional native storage checks require node:sqlite.
+node --test sdk/test/native/sqlite-outbox.test.mjs
 ```
 
-65 SDK tests pass, including controlled transport/discovery/heartbeat checks, durable outbox recovery cases and a real Chromium IndexedDB/Web Locks test. They cover direct/discovered-object connection, concurrent/lazy discovery, first-success connection, failures, cancellation, candidate floods, same-service address recovery, resume refresh, history filters and exact-byte retry. Six SDK/TestServer scenarios also run in the .NET suite. Real LAN discovery, OS sleep/resume and full installed-service network/physical-printer integration remain pending. The browser storage test requires Node.js 22+ and a local Edge or Chrome installation.
+81 core SDK tests and nine SQLite outbox tests pass, including controlled transport/discovery/heartbeat checks, real Chromium IndexedDB/Web Locks, local process crashes and concurrent native dispatch. Seven SDK/TestServer scenarios also run in the .NET suite, including the production SQLite adapter with real Chromium preparation, ledger reopen and lost acknowledgements. Real LAN discovery, OS sleep/resume and full installed-service network/physical-printer integration remain pending. Browser storage tests require Node.js 22+ and local Edge/Chrome; the SQLite scenario requires node:sqlite enabled.
 
 ## Discovery and address recovery
 
