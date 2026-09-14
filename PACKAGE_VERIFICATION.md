@@ -1,5 +1,13 @@
 # Development package verification — 2026-09-13
 
+## September 14: destination and retained-uncertainty candidate
+
+[Run 34837087581](https://github.com/EntreePOS/entree-print/actions/runs/34837087581) passed from `4545cd6f777ca5b2537b156a98e20235e9a90e76`. Downloaded TRX confirms **416 .NET tests passed**, with no failures or skips. Workflow logs confirm **115 core SDK tests, nine native SQLite tests and nine isolated installer checks**. All **64 hosted installer lifecycle checkpoints** passed, including permissions over **739 installed entries**. Five native logs confirm successful install/update/uninstall/reinstall/final uninstall, without reboot. The [exact result](installer/evidence/windows-ci-34837087581.json) records source, checks and digest.
+
+The unsigned EXE is **80,860,588 bytes**, SHA-256 `705fe2d49e4deea19efe4b6b693350acde23167ba01878b1efdc0279cfb4d688`. Package manifest SHA-256 is `547857aff45bea08b666f609e7fd0779d5c441faf2d594ba09a7bd586d0a98ab`. Downloaded bytes and hash match build metadata, SHA256SUMS and lifecycle evidence. [Artifact 10345017079](https://github.com/EntreePOS/entree-print/actions/runs/34837087581/artifacts/10345017079) retains the candidate/evidence for 14 days; local files are under `%TEMP%\EntreeInstallerCI-34837087581`.
+
+This candidate includes Windows TCP/IP endpoint identity, consistent API/event destination fields, refreshed backup-queue checks, and retained uncertainty across later rejections/client-store reopen. Ordinary printing still uses the Windows driver. Source-level destination checks compare configured endpoints; they do not identify physical printer hardware or establish layout equivalence. Hosted lifecycle verification keeps printing inactive. Automatic routing/shared claims, installed certificate/service access, interactive tray/logon and live printer/network recovery remain open. No release was published. Subsequent documentation records this evidence only.
+
 ## September 14: HTTPS installer candidate
 
 [Run 34834821106](https://github.com/EntreePOS/entree-print/actions/runs/34834821106) passed from `911ee37c135d270023ee86fcc74b45c4dcc20717`. Downloaded TRX confirms **386 .NET tests executed and passed**, with no failures or skips. Workflow logs confirm **98 core SDK tests, nine native SQLite tests and nine isolated installer checks**. All **64 hosted installer lifecycle checkpoints** passed, including permissions over **739 installed entries**. Five native logs confirm successful install/update/uninstall/reinstall/final uninstall, without reboot. The [recorded result](installer/evidence/windows-ci-34834821106.json) retains the exact source, checks and digest.
