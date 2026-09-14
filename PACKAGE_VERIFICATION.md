@@ -1,5 +1,13 @@
 # Development package verification — 2026-09-13
 
+## September 14: native SQLite outbox candidate
+
+[Run 34823530375](https://github.com/EntreePOS/entree-print/actions/runs/34823530375) passed from `bc96eef5a8cd208df178a4d67a0a0b27d1436ae7`. Downloaded TRX/logs confirm **320 .NET tests, 81 core SDK tests and nine native SQLite tests** passed. All **64 installer lifecycle checkpoints** passed, including permissions across **738 installed entries** with the additional SDK adapter. Five native logs report successful install/update/uninstall/reinstall/final uninstall without reboot. [Recorded result](installer/evidence/windows-ci-34823530375.json) preserves the exact source, installer digest and checkpoint list.
+
+The unsigned installer is **80,841,764 bytes**, SHA-256 `2961c27582e7287cfac2e279471b742193d7cf9d21a5431eb7678ce50e7b5c94`; package manifest SHA-256 `10ca4d64eb64b349971732ff92259122e194ea964a2777a62bb08e5fc4bf336d`. The downloaded EXE digest independently matches metadata and the result. [Artifact 10338708667](https://github.com/EntreePOS/entree-print/actions/runs/34823530375/artifacts/10338708667) contains the candidate and evidence with 14-day retention; local evidence is under `%TEMP%\EntreeInstallerCI-34823530375`.
+
+SQLite checks include a real Node process exit while holding a queue lock, independent queue access and previously committed wire recovery. The seventh SDK/TestServer scenario uses the production adapter with Chromium and service-ledger reopen. These do not prove machine power-loss behavior, network filesystems, cross-device ownership or live Windows printer recovery. Installer scope remains silent hosted administrator operation with printing inactive. No GitHub Release was created.
+
 ## September 14: bounded settings-request candidate
 
 [Run 34822273890](https://github.com/EntreePOS/entree-print/actions/runs/34822273890) passed from source `297a4645b5018f1469886bb30c983ccbbd8dec4b`, including the settings-request correction and configured initial backup connections. The downloaded TRX confirms **319 executed/passed, zero failed or skipped**. The installer completed all **64 lifecycle checkpoints**; its five native logs report successful install/update/uninstall/reinstall/final uninstall without reboot. The fixed installed settings helper saved successfully. [Recorded result](installer/evidence/windows-ci-34822273890.json) retains the exact checkpoint list and source identity.

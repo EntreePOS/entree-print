@@ -105,11 +105,12 @@ Current prerequisites are Windows x64, .NET/ASP.NET Core/Windows Desktop 10.0.12
 
 ## Develop and verify
 
-Use the SDK selected by `global.json`; the browser storage tests require Node.js 22+ and Edge or Chrome. SDK runtime requirements are documented separately in `sdk/package.json`.
+Use the SDK selected by `global.json`, Node.js 22.13+ with `node:sqlite` enabled, and Edge or Chrome for the complete test suite. The optional SQLite adapter's runtime requirements are separate from the core SDK's requirements in `sdk/package.json`.
 
 ```powershell
 dotnet test EntreePrintPlugin.Tests/EntreePrintPlugin.Tests.csproj --artifacts-path "$env:TEMP\EntreePrintTests"
 node --test sdk/test/*.test.mjs
+node --test sdk/test/native/sqlite-outbox.test.mjs
 powershell -NoProfile -File scripts/test-package.ps1
 powershell -NoProfile -File scripts/publish.ps1 -OutputRoot ./dist/my-beta-build
 ```

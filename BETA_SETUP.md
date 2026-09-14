@@ -39,7 +39,7 @@ To remove the service, use **Windows Service → Uninstall Service** in the tray
 
 ## Build from source
 
-Install the x64 **.NET SDK 10.0.401** (or a later patch in that SDK feature band). `global.json` pins the SDK and `Directory.Build.props` supplies the shared target framework/runtime baseline for all projects. Node.js on PATH is required for the SDK/service integration tests. An isolated SDK can also be used by setting `DOTNET_ROOT` and prepending its directory to `PATH` in the build shell.
+Install the x64 **.NET SDK 10.0.401** (or a later patch in that SDK feature band). `global.json` pins the SDK and `Directory.Build.props` supplies the shared target framework/runtime baseline for all projects. Node.js 22.13+ with `node:sqlite` enabled must be on PATH for the SDK/service integration tests. An isolated SDK can also be used by setting `DOTNET_ROOT` and prepending its directory to `PATH` in the build shell.
 
 ```powershell
 powershell -NoProfile -File .\scripts\publish.ps1
