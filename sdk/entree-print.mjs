@@ -197,10 +197,10 @@ export function createEntreePrint(options = {}, dependencies = {}) {
       pending.finally(() => { if (this.connecting === pending) this.connecting = null; }).catch(() => {});
       return pending;
     }
-    async handshake() {
+    async handshake(timeoutMs = this.config.requestTimeoutMs) {
       this.handshakeOrder = ++handshakeSequence;
       if (this.config.token.length < 32) fail('AUTH_NOT_CONFIGURED', 'Configure the API token from the print-service settings.');
-      const info = await this.request('/api/connection');
+      const info = await this.request('/api/connection', { timeoutMs });
       if (!info || typeof info.serviceId !== 'string' || !info.serviceId || typeof info.bootId !== 'string' || !info.bootId ||
         info.apiVersion !== '0.0.1' || !Array.isArray(info.printers) || info.printers.some(printer => typeof printer?.name !== 'string' || !printer.name))
         fail('PROTOCOL_UNSUPPORTED', 'The endpoint did not return a compatible 0.0.1 connection.');
@@ -326,6 +326,12 @@ export function createEntreePrint(options = {}, dependencies = {}) {
     }
     async read(path) { await this.ready(); return this.request(path); }
     async submit(wire, key, path = '/api/jobs', reprintOf) {
+      if (this.nodeSelection?.usedBackup) {
+        if (reprintOf !== undefined)
+          fail('JOB_OWNER_REQUIRED', 'Connect directly to the original job owner to request a reprint.');
+        const body = JSON.parse(new TextDecoder().decode(wire.bytes));
+        verifyBackupDestination(this, body.printer, body.type !== 'print');
+      }
       await this.ready();
       for (let attempt = 0; ; attempt++) {
         try {
@@ -351,7 +357,7 @@ export function createEntreePrint(options = {}, dependencies = {}) {
   }
 
   function sessionFor(config, expectedIdentity = null) {
-    const matching = [...sessions].find(session => !session.disabled &&
+    const matching = [...sessions].find(session => !session.disabled && !session.nodeSelection &&
       (!expectedIdentity || session.identity === expectedIdentity) &&
       JSON.stringify(canonical(session.config)) === JSON.stringify(canonical(config)));
     if (matching) return matching;
@@ -512,6 +518,14 @@ export function createEntreePrint(options = {}, dependencies = {}) {
     return snapshot(options);
   }
 
+  function verifyBackupDestination(session, printerName, deviceCommand = false) {
+    if (!session.nodeSelection?.usedBackup) return;
+    if (deviceCommand) fail('DEVICE_OWNER_REQUIRED', 'Connect directly to the device owner for drawer, beep, cut or raw commands.');
+    const printer = session.info?.printers.find(item => item.name === printerName);
+    if (printer?.connection?.type !== 'network' || typeof printer.connection.host !== 'string' || !printer.connection.host)
+      fail('PRINTER_OWNER_REQUIRED', 'Backup connections can print only to identified network queues. Connect directly to the USB or unknown printer owner.');
+  }
+
   class Ticket {
     #session; #printer; #content; #width; #rendering = null; #defaultKey = null; #intents = new Map();
     constructor(session, printer, value, width) { this.#session = session; this.#printer = printer; this.#content = value; this.#width = width; }
@@ -540,6 +554,7 @@ export function createEntreePrint(options = {}, dependencies = {}) {
       return snapshot(await this.#rendering);
     }
     async print(options = {}) {
+      verifyBackupDestination(this.#session, this.#printer);
       const supplied = printOptions(options);
       const key = supplied.idempotencyKey ?? (this.#defaultKey ??= randomKey());
       const metadata = JSON.stringify(canonical(supplied.metadata ?? {}));
@@ -577,6 +592,7 @@ export function createEntreePrint(options = {}, dependencies = {}) {
     setContent(value) { return new Ticket(this.#session, this.#name, content(value), this.#width); }
     status(options = {}) { fields(options, ['refresh']); return this.#session.read(`/api/printers/status?printer=${encodeURIComponent(this.#name)}&refresh=${options.refresh === true}`); }
     async #command(type, options, bytesBase64) {
+      verifyBackupDestination(this.#session, this.#name, true);
       const supplied = printOptions(options);
       const key = supplied.idempotencyKey ?? randomKey();
       const body = { type, printer: this.#name, idempotencyKey: key, ...(supplied.metadata ? { metadata: supplied.metadata } : {}),
@@ -652,10 +668,71 @@ export function createEntreePrint(options = {}, dependencies = {}) {
       version: '0.0.1-beta',
       get connection() {
         const { printers, ...info } = session.info;
-        return snapshot(info);
+        return snapshot({ ...info, ...(session.nodeSelection ? { nodeSelection: session.nodeSelection } : {}) });
       },
       ...printingOperations(() => session)
     });
+  }
+
+  function connectNodes(options) {
+    fields(options, ['nodes', 'failover', 'timeoutMs']);
+    if (!Array.isArray(options.nodes) || options.nodes.length < 1 || options.nodes.length > 8)
+      fail('REQUEST_INVALID', 'Provide 1–8 configured print servers.');
+    if (options.failover !== undefined && typeof options.failover !== 'boolean')
+      fail('REQUEST_INVALID', 'failover must be a boolean.');
+    const timeoutMs = number(options.timeoutMs ?? 10000, 'timeoutMs', 1, 120000);
+    const identities = new Set(), addresses = new Set();
+    // Validate and copy every candidate before contacting any server. A node's
+    // credential must be explicit; never inherit another server's token.
+    const nodes = options.nodes.map(node => {
+      fields(node, [...Object.keys(defaults), 'serviceId', 'name']);
+      const { serviceId, name, ...connection } = node;
+      const identity = text(serviceId, 'serviceId', 128);
+      text(connection.ip, 'ip', 253);
+      if (typeof connection.token !== 'string' || connection.token.length < 32)
+        fail('AUTH_NOT_CONFIGURED', 'Each configured server requires its own API token.');
+      if (name !== undefined) text(name, 'name', 128);
+      const config = settings({ ...configuration, token: '' }, snapshot(connection));
+      if (identities.has(identity) || addresses.has(config.baseUrl))
+        fail('REQUEST_INVALID', 'Configured servers must have distinct identities and addresses.');
+      identities.add(identity); addresses.add(config.baseUrl);
+      return { identity, config };
+    });
+    const generation = ++selection;
+    const count = options.failover === false ? 1 : nodes.length;
+    const attempts = nodes.map(node => ({ serviceId: node.identity, ip: node.config.ip, port: node.config.port,
+      protocol: node.config.protocol, state: 'not_checked' }));
+    return (async () => {
+      const deadline = io.now() + timeoutMs;
+      let active = null, expired = false;
+      const timer = io.setTimeout(() => { expired = true; active?.stop(); }, timeoutMs);
+      try {
+        for (let index = 0; index < count; index++) {
+          if (generation !== selection) fail('CONNECTION_SUPERSEDED', 'A newer connection selection replaced this attempt.');
+          const remaining = deadline - io.now();
+          if (expired || remaining <= 0) break;
+          const node = nodes[index];
+          active = new Session(node.config); active.identity = node.identity;
+          try {
+            // Reserve time for later candidates if an earlier address is silent.
+            const info = await active.handshake(Math.min(node.config.requestTimeoutMs, Math.max(1, remaining / (count - index))));
+            if (generation !== selection) fail('CONNECTION_SUPERSEDED', 'A newer connection selection replaced this attempt.');
+            if (expired || io.now() >= deadline) fail('SERVICE_UNAVAILABLE', 'Configured server selection timed out.');
+            attempts[index].state = 'selected';
+            active.nodeSelection = snapshot({ selectedServiceId: node.identity, usedBackup: index > 0, nodes: attempts });
+            current = active; configuration = active.config; active.adopt(info);
+            if (generation !== selection || active.disabled)
+              fail('CONNECTION_SUPERSEDED', 'A newer connection selection replaced this attempt.');
+            return connectedLibrary(active);
+          } catch (error) {
+            active.stop(); sessions.delete(active);
+            attempts[index].state = 'failed'; attempts[index].code = expired ? 'SERVICE_UNAVAILABLE' : error.code || 'SERVICE_UNAVAILABLE';
+            if (generation !== selection) fail('CONNECTION_SUPERSEDED', 'A newer connection selection replaced this attempt.');
+          }
+        }
+        fail('SERVICE_UNAVAILABLE', 'None of the configured print servers could be connected.', { retryable: true, details: { nodes: snapshot(attempts) } });
+      } finally { io.clearTimeout(timer); }
+    })();
   }
 
   current = new Session(configuration);
@@ -663,6 +740,7 @@ export function createEntreePrint(options = {}, dependencies = {}) {
     version: '0.0.1-beta',
     config(options) { configuration = settings(configuration, options); current = sessionFor(configuration); selection++; return api; },
     connect(options) {
+      if (options && Object.hasOwn(options, 'nodes')) return connectNodes(options);
       if (options !== undefined) {
         // Accept a discovery record directly as well as ordinary connection settings.
         fields(options, [...Object.keys(defaults), 'serviceId', 'name']);
@@ -697,6 +775,7 @@ export function createEntreePrint(options = {}, dependencies = {}) {
         fingerprint: async source => (await encode(canonical(source))).digest,
         async prepare(library, record) {
           const session = ownerSession(library);
+          verifyBackupDestination(session, record.printer);
           const ticket = new Ticket(session, record.printer, record.content, record.widthMm);
           const rendered = await ticket.render();
           const body = { type: 'print', printer: record.printer, renderId: rendered.id, idempotencyKey: record.idempotencyKey,

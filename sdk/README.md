@@ -50,7 +50,26 @@ Direct `connect(options)` and `search().connect()` return the same library inter
 
 Durable event replay and `after` actions are not implemented yet. Do not treat this as the finished API contract; see [API_DESIGN.md](../API_DESIGN.md).
 
-The requested automatic failover to another configured node is now part of the target design, but is not implemented. The SDK currently rejects `nodes`/`failover` options. Current recovery finds the same service at a new address. Do not catch a print timeout and send the job to another server: its original server may already have accepted it, and each server currently has its own deduplication ledger.
+## Connecting through a backup server
+
+```javascript
+const print = await EntreePrint.connect({
+  nodes: [
+    { serviceId: settings.primaryServiceId, ip: '192.168.1.10', port: 9779, token: settings.primaryToken },
+    { serviceId: settings.backupServiceId, ip: '192.168.1.11', port: 9779, token: settings.backupToken }
+  ],
+  timeoutMs: 10000,
+  failover: true
+});
+const printers = await print.getPrinters();
+console.log(print.connection.serviceId, print.connection.nodeSelection.usedBackup);
+```
+
+This selects one server during `connect()`. Supply 1–8 distinct servers in preference order, each with its own explicit token, address and expected service ID. The SDK validates every entry before contacting any server, verifies the responding identity and requires an installed printer. The total deadline defaults to 10 seconds; silent candidates leave time for later candidates. `failover: false` tries only the first server. If none succeeds, connection rejects with `SERVICE_UNAVAILABLE`; `error.details.nodes` records the attempted addresses and error codes without credentials.
+
+The returned library is bound to the selected server. `connection.nodeSelection` contains `selectedServiceId`, `usedBackup`, and candidate states (`selected`, `failed`, `not_checked`) from that connection attempt; it is not a live health report for unused nodes. Retrieve installed queues with `getPrinters()`; there is no `printers` configuration mapping. Configure each eligible Windows queue directly to the intended Ethernet printer. The SDK checks that an automatically selected backup queue identifies a network host, but does not prove it reaches the same physical printer as the primary. USB or unidentified queues return `PRINTER_OWNER_REQUIRED`. Connect directly to the device owner for drawer, beep, cut or raw commands (`DEVICE_OWNER_REQUIRED`) and to the recorded job owner for reprints (`JOB_OWNER_REQUIRED`). These restrictions also cover the durable outbox.
+
+Heartbeat recovery still finds the same service at a new address. It does not select another server or transfer jobs. Existing libraries, targets, prepared tickets and outbox records retain their original owner after another `connect()` call. Do not catch a print timeout and recreate the job on a backup: its original server may already have accepted it, and each server has its own deduplication ledger. Automatic routing during printing and coordinated cross-node ownership remain unimplemented.
 
 ## History and explicit reprints
 

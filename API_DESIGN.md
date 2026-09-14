@@ -134,33 +134,35 @@ After a Wi-Fi reconnect or address change, recover the selected service ID for i
 
 ### Configured nodes and printing failover
 
-Latest requirement: `connect()` accepts an object, and another available print node can continue printing when the preferred node fails. Direct-object and discovered-object connections are implemented. The node pool below is a proposed extension, not yet accepted by the SDK; do not deploy this example until its routing and recovery checks pass.
+Latest requirement: `connect()` accepts an object, and another available print node can continue printing when the preferred node fails. Direct-object, discovered-object and ordered initial node selection are implemented. This example selects a server during connection; automatic routing during printing and transfer of existing jobs remain proposed work.
 
 ```javascript
-await EntreePrint.connect({
+const print = await EntreePrint.connect({
   nodes: [
     {
       serviceId: settings.primaryServiceId,
-      ip: '192.168.1.10', port: 9779, token: settings.primaryToken,
-      printers: { kitchen: 'Kitchen Printer' }
+      ip: '192.168.1.10', port: 9779, token: settings.primaryToken
     },
     {
       serviceId: settings.backupServiceId,
-      ip: '192.168.1.11', port: 9779, token: settings.backupToken,
-      printers: { kitchen: 'Kitchen Printer' }
+      ip: '192.168.1.11', port: 9779, token: settings.backupToken
     }
   ],
-  failover: true
+  failover: true,
+  timeoutMs: 10000
 });
 
-await EntreePrint.target('kitchen').setContent(receiptHtml).print({
+const printers = await print.getPrinters();
+await print.target('Kitchen Printer').setContent(receiptHtml).print({
   idempotencyKey: printIntent.id
 });
 ```
 
-Confirmed normal topology: the cashier receipt printer uses USB; regular printers use Ethernet. Configure each eligible print-server node with its own Windows queue pointing directly to the same physical Ethernet printer. A queue shared through the failed primary computer is not an independent backup. `printers` maps a POS destination to the exact installed queue on each node; queue names alone do not prove that both queues reach the same device. Bind and verify those mappings during setup. Keep the cashier USB destination pinned to its connected host; host failure reports it unavailable. Moving cashier receipts to another physical printer requires a separately configured replacement and is not the default behavior.
+Confirmed normal topology: the cashier receipt printer uses USB; regular printers use Ethernet. Configure each eligible print-server node with its own Windows queue pointing directly to the same physical Ethernet printer. A queue shared through the failed primary computer is not an independent backup. Use installed Windows queue names; there is no plugin `printers` mapping or duplicate driver profile. Queue names alone do not prove that both queues reach the same device. Current backup selection permits receipt submission only to queues that identify a network host; physical endpoint equivalence still requires setup verification. Keep the cashier USB destination pinned to its connected host; host failure reports it unavailable. Moving cashier receipts to another physical printer requires an explicit destination choice and is not the default behavior.
 
 Nodes are ordered by preference and each has its own credential and verified identity. Discovery provides candidate addresses, not permission to route to an arbitrary store or printer. Printer failure is distinct from print-server failure: a second server does not resolve paper-out, a jam or a disconnected Ethernet printer when it targets that same device.
+
+The following table describes the full intended routing behavior. Currently, only initial connection selection is automatic; an existing ticket never changes its owner.
 
 | Job situation | Failover behavior |
 | --- | --- |
