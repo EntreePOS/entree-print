@@ -1,0 +1,32 @@
+# Build and development output
+**/bin/
+**/obj/
+dist/
+output/
+.vs/
+.idea/
+node_modules/
+TestResults/
+coverage/
+*.user
+*.suo
+*.log
+*.tmp
+
+# Local configuration, credentials and accepted receipt data
+.env
+.env.*
+entree-print-settings.json
+**/spool/
+**/renders/
+**/jobs/
+**/text-browser-*/
+
+# Site and release staging
+site/_site/
+.release-staging/
+
+# Local client-code review notes are not part of the standalone product.
+/ENTREE_POS_PRINTING_REVIEW.md
+/WIFI_PRINTING_FIX_PLAN.md
+/PROJECT_REVIEW_AND_ROADMAP.md

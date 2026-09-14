@@ -1,0 +1,23 @@
+{
+  "characterization": true,
+  "physicalPrinting": false,
+  "observations": [
+    {
+      "scenario": "POS_lost_print_callback",
+      "simulatedAcceptances": 1,
+      "auditStatus": "failed",
+      "result": "accepted fake output is labelled failed, without retained C-Lodop job identity"
+    },
+    {
+      "scenario": "POS_operator_retries_after_lost_callback",
+      "simulatedAcceptances": 2,
+      "distinctAuditKeys": true,
+      "result": "second receipt call creates a new audit key and submits again"
+    },
+    {
+      "scenario": "POS_empty_queue_without_completion_evidence",
+      "auditStatus": "printed",
+      "result": "job becomes printed on queue emptiness alone"
+    }
+  ]
+}

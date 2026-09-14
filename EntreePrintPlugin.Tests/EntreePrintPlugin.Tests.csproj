@@ -1,0 +1,29 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" Version="6.0.2" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="Microsoft.AspNetCore.TestHost" Version="10.0.12" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+    <Content Include="..\sdk\entree-print.mjs" Link="sdk\entree-print.mjs" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\sdk\outbox.mjs" Link="sdk\outbox.mjs" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\sdk\integration\service-contract.mjs" Link="sdk\integration\service-contract.mjs" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\EntreePrintPlugin\EntreePrintPlugin.csproj" />
+    <ProjectReference Include="..\EntreePrintTray\EntreePrintTray.csproj" />
+  </ItemGroup>
+
+</Project>

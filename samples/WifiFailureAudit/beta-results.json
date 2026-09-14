@@ -1,0 +1,20 @@
+{
+  "characterization": false,
+  "physicalPrinting": false,
+  "observations": [
+    {
+      "scenario": "lost_ack_restart_and_payload_conflict",
+      "submissions": 1,
+      "result": "one output; altered content rejected"
+    },
+    {
+      "scenario": "accepted_unsent_restart",
+      "recovered": true
+    },
+    {
+      "scenario": "network_failure_after_possible_handoff",
+      "submissions": 1,
+      "finalStatus": "needs_attention"
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../EntreePrintPlugin/EntreePrintPlugin.csproj" />
+    <Content Include="extract-text-layout.js" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

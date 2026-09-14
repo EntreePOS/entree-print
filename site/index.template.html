@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Connect, preview and print receipts with Entree Print. A standalone Windows printing service with a JavaScript API.">
+  <meta name="theme-color" content="#f5f7fa">
+  <title>Entree Print | Receipt printing for your application</title>
+  <link rel="icon" type="image/png" href="assets/printer.png">
+  <link rel="stylesheet" href="styles.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <a class="skip" href="#guide">Skip to guide</a>
+  <header class="header">
+    <a class="brand" href="#top"><img src="assets/printer.png" width="36" height="36" alt=""><span>Entree Print</span></a>
+    <nav aria-label="Primary navigation">
+      <a href="#setup">Get started</a><a href="#api">API</a><a href="#release">Release</a>
+      <a class="github" href="https://github.com/EntreePOS/entree-print">GitHub</a>
+      <button class="theme" type="button" aria-label="Switch to dark theme">Dark</button>
+    </nav>
+  </header>
+  <main id="top">
+    <section class="hero" aria-labelledby="hero-title">
+      <div class="hero-copy">
+        <p class="eyebrow">Windows receipt printing</p>
+        <h1 id="hero-title">Clear receipts.<br>A simple print API.</h1>
+        <p class="lead">Preview receipts in your app. Print through Windows with clear text, QR codes and barcodes.</p>
+        <div class="actions"><a class="button primary" href="#setup">Get started</a><a class="button" href="#api">API</a></div>
+      </div>
+      <figure class="receipt-figure">
+        <div class="receipt-mat"><img src="assets/receipt.svg" width="272" height="305" alt="Saved cashier test receipt with Chinese and English text, a QR code and a Code128 barcode"></div>
+        <figcaption>Saved preview from the approved cashier test.<br>Chinese, English, QR and Code128.</figcaption>
+      </figure>
+    </section>
+    <div class="release-note" role="note"><strong>0.0.1-beta is in development.</strong> The installer is being prepared. <a href="#release">See release status</a>.</div>
+    <div class="docs-layout" id="guide">
+      <aside class="contents" aria-label="Guide contents">
+        <label for="topic-search">Find a topic</label>
+        <input id="topic-search" type="search" placeholder="Preview, paper, retries…" autocomplete="off">
+        <nav aria-label="On this page">
+          <a href="#setup" data-keywords="install windows tray icon paper printer driver">Set up Windows</a>
+          <a href="#connect" data-keywords="connect library printers host ip token config">Connect your app</a>
+          <a href="#preview" data-keywords="html render preview ticket width clear text">Preview and print</a>
+          <a href="#codes" data-keywords="qr qrcode qr code barcode code128 code39 chinese unicode">Add QR and barcodes</a>
+          <a href="#discovery" data-keywords="search ethernet wifi usb heartbeat offline ip">Find a server</a>
+          <a href="#status" data-keywords="status jobs history paper spooler completed">Read job status</a>
+          <a href="#recovery" data-keywords="retry missing duplicate lost acknowledgement checksum">Recover a request</a>
+          <a href="#outbox" data-keywords="offline durable browser storage indexeddb unsent reload">Keep unsent tickets</a>
+          <a href="#commands" data-keywords="beep buzzer drawer cut raw commands">Device helpers</a>
+          <a href="#api" data-keywords="api reference methods functions">API reference</a>
+          <a href="#release" data-keywords="download installer version beta release build">Release and build</a>
+        </nav>
+        <p class="search-empty" hidden>No matching topic. Try “print” or “status”.</p>
+        <p class="contents-foot">Standalone service.<br>Your app owns its order flow.</p>
+      </aside>
+      <div class="guide-body">
+        <section id="setup" aria-labelledby="setup-title">
+          <h2 id="setup-title">Set up Windows</h2>
+          <p>Install Entree Print on the Windows computer that can access your printers. A web app, tablet or desktop application connects to that computer. Entree POS is one possible client.</p>
+          <ol class="setup-list">
+            <li><strong>Install the printer in Windows.</strong><p>Choose its paper size and printing preferences in the driver. USB, Ethernet and Wi-Fi queues all use the Windows spooler.</p></li>
+            <li><strong>Open the tray application.</strong><p>In a development package, run <code>tray/EntreePrintTray.exe</code>. Settings opens on manual launch. The printer icon may be under the hidden-icons arrow near the clock.</p></li>
+            <li><strong>Configure API access.</strong><p>Generate a token, enter your application's website address when using a browser, and save. Use the Windows Service menu to install/start the service on your test host.</p></li>
+          </ol>
+          <details><summary>Runtime and browser requirements</summary><p>The current build needs Windows x64 with .NET, ASP.NET Core and Windows Desktop 10.0.12 or a later 10.0 patch, plus Edge or Chrome for layout preparation. Install fonts for the languages you print. Node SDK usage requires Node.js 18+; browser storage tests use Node.js 22+.</p><p>LAN transport currently uses HTTP. HTTPS deployment and browser mixed-content/private-network behavior remain release checks. A checksum and allowed website list do not encrypt traffic.</p></details>
+          <div class="note"><strong>Paper width comes from the driver.</strong><p>An 80 mm roll can have a narrower printable area. Omit <code>setWidth()</code> to use the driver's area automatically. An explicit width only narrows it.</p></div>
+        </section>
+        <section id="connect" aria-labelledby="connect-title">
+          <h2 id="connect-title">Connect your app</h2>
+          <p>Bundle the SDK directory with your application. <code>connect()</code> returns a connected print library; retrieve printer objects from <code>print.getPrinters()</code>.</p>
+          <!-- example:connect -->
+          <p>The IP is the print-service computer's address, not the printer's address. Use <code>127.0.0.1</code> when your client runs on that same computer. Connection failure throws an error. Each returned library stays bound to its selected server.</p>
+        </section>
+        <section id="preview" aria-labelledby="preview-title">
+          <h2 id="preview-title">Preview and print the same ticket</h2>
+          <p><code>render()</code> prepares the layout and returns display-ready HTML. It produces no paper. Display that HTML in a sandboxed iframe, then print the same ticket on the operator's action.</p>
+          <!-- example:preview -->
+          <p>Persist a unique intent key for each destination and intended copy. Do not use only an order number: kitchen slips, later changes and reprints are separate actions.</p>
+          <details><summary>Which HTML can I use?</summary><p>Use self-contained text and supported layout CSS. The renderer draws positioned text and vector graphics through the Windows driver. Images, scripts, external styles/fonts, transforms and several advanced CSS features are rejected rather than silently flattened into a blurry screenshot.</p><p>Long receipts paginate within the driver's default pages without shrinking text. The HTML preview is continuous; it does not currently show page boundaries. Test your templates and printer's feed/cut behavior before rollout.</p></details>
+        </section>
+        <section id="codes" aria-labelledby="codes-title">
+          <h2 id="codes-title">Add QR codes and barcodes</h2>
+          <p>Use content blocks to keep text and codes in one prepared receipt. No image conversion is needed.</p>
+          <!-- example:codes -->
+          <p>Supported code formats are QR, Code128 and Code39. Code dimensions follow the printer's dot resolution. Chinese/English output and both QR and Code128 scanning passed the cashier pilot; test other printer/driver combinations separately.</p>
+        </section>
+        <section id="discovery" aria-labelledby="discovery-title">
+          <h2 id="discovery-title">Find a print server</h2>
+          <p>Use the native entry point in Node or Electron's trusted main process. Awaiting <code>search()</code> collects verified servers. <code>search().connect()</code> selects the first successful connection.</p>
+          <!-- example:discovery -->
+          <p>Heartbeat starts after connection. It checks the service, not paper sensors. Address recovery can find the same service at a new IP; automatic transfer to another server is not implemented yet.</p>
+        </section>
+        <section id="status" aria-labelledby="status-title">
+          <h2 id="status-title">Read status with the right meaning</h2>
+          <p>Query the selected queue, retrieve job history, or show the original saved preview. Printer observations come from Windows; unsupported sensors may be unknown.</p>
+          <!-- example:status -->
+          <dl class="status-meaning">
+            <div><dt>Accepted by the plugin</dt><dd>The job is saved durably. An observed offline or paper-out destination can wait while other printers continue.</dd></div>
+            <div><dt>Completed by Windows</dt><dd>The spooler reported completion for that job. It is not independent confirmation that paper emerged.</dd></div>
+            <div><dt>Needs attention</dt><dd>Delivery is unresolved. Keep the intent and evidence; do not automatically send another copy.</dd></div>
+          </dl>
+        </section>
+        <section id="recovery" aria-labelledby="recovery-title">
+          <h2 id="recovery-title">Recover a lost acknowledgement</h2>
+          <p>A response can be lost after a ticket is accepted. Keep its key and owning service identity. The SDK checks request bytes and acknowledgement identity, and retries preserve the same request.</p>
+          <!-- example:recovery -->
+          <p>Lookup remains available after a finished receipt's layout expires. Saved layouts normally last seven days; pending and uncertain server jobs do not expire. An operator-requested reprint uses a new action key and <code>reprintJob()</code>.</p>
+        </section>
+        <section id="outbox" aria-labelledby="outbox-title">
+          <h2 id="outbox-title">Keep tickets that have not been sent</h2>
+          <p>The optional browser/Electron renderer outbox saves source content before network work, then exact request bytes before submission. Call <code>flush()</code> after reconnect or application startup.</p>
+          <!-- example:outbox -->
+          <p>Each printer progresses in order; another destination can continue independently. A local <code>pending</code> record is not a plugin acceptance. The outbox requires IndexedDB and Web Locks and stops when the application closes.</p>
+          <details><summary>Storage and operator controls</summary><p>Local storage retains up to 10,000 records without automatic pruning. Clearing site data removes this local history. Locks coordinate tabs within one application origin, not separate tablets.</p><p><code>retry()</code> re-enables the same saved request. <code>cancel()</code> is available before a request has been saved for submission. <code>stopRetrying()</code> lets an operator stop local retries and release later work; it does not cancel a possible server/Windows job. All three take <code>{ serviceId, idempotencyKey }</code>.</p><p>This outbox prepares source content when dispatching. Use a ticket's <code>render()</code> and <code>print()</code> for an already reviewed preview. Node main-process storage needs an application-provided transactional adapter.</p></details>
+        </section>
+        <section id="commands" aria-labelledby="commands-title">
+          <h2 id="commands-title">Use device helpers when supported</h2>
+          <p>Drawer, beep and cut helpers are optional device operations. Configure verified bytes for the model on the service; ordinary receipts use Windows driver settings.</p>
+          <!-- example:commands -->
+          <p><code>sendCommand(Uint8Array)</code> is also available when raw commands are enabled for the queue. The client outbox handles receipts only and does not automatically replay device helpers.</p>
+        </section>
+        <section id="api" aria-labelledby="api-title">
+          <h2 id="api-title">API at a glance</h2>
+          <div class="api-groups">
+            <div><h3>Connect</h3><code>EntreePrint.config(options)</code><code>EntreePrint.connect(options?)</code><code>EntreePrint.search(options?)</code><code>EntreePrint.disconnect()</code><p>Configure the service and manage SDK connections.</p></div>
+            <div><h3>Print library</h3><code>print.getPrinters(options?)</code><code>print.target(name)</code><code>print.getJobs(printer?, filters?)</code><code>print.getJob(idOrKey)</code><code>print.getJobRender(id)</code><code>print.reprintJob(id, options)</code><p>Queries and tickets remain bound to this service.</p></div>
+            <div><h3>Ticket</h3><code>target.setContent(content)</code><code>ticket.setWidth(mm)</code><code>ticket.render()</code><code>ticket.print(options?)</code><p>Builders return immutable ticket snapshots.</p></div>
+            <div><h3>Client recovery</h3><code>EntreePrint.outbox()</code><code>outbox.enqueue(intent)</code><code>outbox.flush(print)</code><code>outbox.list()</code><p>Retain client work before the service accepts it.</p></div>
+          </div>
+          <p><a href="https://github.com/EntreePOS/entree-print/blob/main/sdk/README.md">Read the full SDK guide</a> for method arguments, errors, events and recovery controls.</p>
+        </section>
+        <section id="release" aria-labelledby="release-title">
+          <h2 id="release-title">Build now. Installer next.</h2>
+          <p>The 0.0.1-beta milestone is still in development. Source builds and printer clarity checks are complete for the tested setup. Installer deployment, protected LAN access and failure pilots remain open. No mature installer is published yet.</p>
+          <p>For development, use the .NET SDK pinned by <code>global.json</code>, Node.js 22+, and Edge or Chrome. Publish to a new directory.</p>
+          <!-- example:build -->
+          <p>The installer will be attached to the <a href="https://github.com/EntreePOS/entree-print/releases">GitHub release</a> when the milestone passes. Follow the <a href="https://github.com/EntreePOS/entree-print/blob/main/BETA_RELEASE_CHECKLIST.md">release checklist</a> for current evidence.</p>
+        </section>
+      </div>
+    </div>
+  </main>
+  <footer><span>Entree Print</span><p>Windows printing for your application.</p><a href="https://github.com/EntreePOS/entree-print">GitHub</a><a href="https://entreepos.github.io/entree-xlsx/">Entree XLSX</a></footer>
+  <p class="sr-only" id="copy-status" role="status" aria-live="polite"></p>
+</body>
+</html>

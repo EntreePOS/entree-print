@@ -1,0 +1,47 @@
+[
+  {
+    "ok": true,
+    "physicalPrinting": false,
+    "printer": "Microsoft Print to PDF",
+    "spoolerJobId": 11,
+    "Status": "completed",
+    "SpoolerState": "completed",
+    "WindowsStatus": 388,
+    "SpoolerEvidence": "notification",
+    "WindowsDocumentName": "ENTREE 823bd48925ab46d5b570b2f25d1e5038",
+    "SpoolerHandoffCompletedAt": "2026-09-13T20:50:12.1332793-04:00",
+    "textRuns": 7,
+    "rectangles": 259,
+    "pdfBytes": 173433
+  },
+  {
+    "ok": true,
+    "physicalPrinting": false,
+    "printer": "Microsoft Print to PDF",
+    "spoolerJobId": 12,
+    "Status": "completed",
+    "SpoolerState": "completed",
+    "WindowsStatus": 388,
+    "SpoolerEvidence": "notification",
+    "WindowsDocumentName": "ENTREE f7b75fe59022410ea5085965ac408ee5",
+    "SpoolerHandoffCompletedAt": "2026-09-13T20:50:56.0339488-04:00",
+    "textRuns": 7,
+    "rectangles": 259,
+    "pdfBytes": 173433
+  },
+  {
+    "ok": true,
+    "physicalPrinting": false,
+    "printer": "Microsoft Print to PDF",
+    "spoolerJobId": 13,
+    "Status": "completed",
+    "SpoolerState": "completed",
+    "WindowsStatus": 388,
+    "SpoolerEvidence": "notification",
+    "WindowsDocumentName": "ENTREE 20ddb4a1a34b42d888fb9fd3dfde4580",
+    "SpoolerHandoffCompletedAt": "2026-09-13T20:50:56.0342136-04:00",
+    "textRuns": 7,
+    "rectangles": 259,
+    "pdfBytes": 173433
+  }
+]

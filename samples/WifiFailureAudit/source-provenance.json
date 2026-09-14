@@ -1,0 +1,25 @@
+{
+  "CapturedAt": "2026-09-13T23:42:35.3420585Z",
+  "Sources": [
+    {
+      "Path": "EntreePrintPlugin\\Services\\CommandProcessor.cs",
+      "SHA256": "68C0FF0206C51080004CD03B0859EF1A46D32AB98243C5E4072CEFA2EECE2007"
+    },
+    {
+      "Path": "EntreePrintPlugin\\Services\\JobStore.cs",
+      "SHA256": "0D6545744D667287EF0D4F620E653D1F6B76E94070175554EFDC4684364CA25B"
+    },
+    {
+      "Path": "EntreePrintPlugin\\Services\\PrinterExecutionQueue.cs",
+      "SHA256": "9B77E33AA6173C4B50A8ACF35B8773376FF4DA6D58B75657FEC80EBDE0751EC2"
+    },
+    {
+      "Path": "C:\\Users\\huang\\Documents\\Development\\Entree POS\\entree-pos\\src\\renderer\\plugin\\print\\status.js",
+      "SHA256": "641CEA89142FBCEE863E226C368EB61855586A6D01B3AC124F96A876502003F2"
+    },
+    {
+      "Path": "C:\\Users\\huang\\Documents\\Development\\Entree POS\\entree-pos\\src\\renderer\\plugin\\printer\\clodop-patch-loader.js",
+      "SHA256": "41EAFE0D5298ECA9B48EF90C9847F7B5B3203AFAD83A84AA855A598D4704C6EC"
+    }
+  ]
+}

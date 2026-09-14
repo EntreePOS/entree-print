@@ -1,0 +1,41 @@
+{
+  "ok": true,
+  "physicalPrinting": false,
+  "results": [
+    {
+      "checkpoint": "accepted",
+      "passed": true,
+      "recovered": "queued",
+      "SpoolerJobId": null,
+      "requeued": 1
+    },
+    {
+      "checkpoint": "attempt",
+      "passed": true,
+      "recovered": "needs_attention",
+      "SpoolerJobId": null,
+      "requeued": 0
+    },
+    {
+      "checkpoint": "submitting",
+      "passed": true,
+      "recovered": "needs_attention",
+      "SpoolerJobId": 42,
+      "requeued": 0
+    },
+    {
+      "checkpoint": "submitted",
+      "passed": true,
+      "recovered": "submitted",
+      "SpoolerJobId": 42,
+      "requeued": 0
+    },
+    {
+      "checkpoint": "completed",
+      "passed": true,
+      "recovered": "completed",
+      "SpoolerJobId": 42,
+      "requeued": 0
+    }
+  ]
+}

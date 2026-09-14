@@ -1,0 +1,481 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ENTREE Print Plugin SDK Playground</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: #f6f7f9;
+      color: #17191c;
+      font-family: Arial, sans-serif;
+      font-size: 15px;
+      line-height: 1.45;
+    }
+
+    main {
+      width: min(1080px, calc(100vw - 32px));
+      margin: 24px auto;
+    }
+
+    h1 {
+      margin: 0 0 18px;
+      font-size: 26px;
+      letter-spacing: 0;
+    }
+
+    label {
+      display: block;
+      margin: 0 0 6px;
+      font-weight: 700;
+    }
+
+    input,
+    textarea,
+    button,
+    select {
+      font: inherit;
+    }
+
+    input,
+    textarea {
+      width: 100%;
+      border: 1px solid #cfd5dd;
+      border-radius: 6px;
+      background: #fff;
+      color: #17191c;
+      padding: 10px 11px;
+    }
+
+    textarea {
+      min-height: 420px;
+      resize: vertical;
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    button {
+      border: 1px solid #b8c0ca;
+      border-radius: 6px;
+      background: #fff;
+      color: #17191c;
+      padding: 9px 12px;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    button.primary {
+      border-color: #111;
+      background: #111;
+      color: #fff;
+    }
+
+    button:disabled {
+      cursor: not-allowed;
+      opacity: .55;
+    }
+
+    .topbar,
+    .panel {
+      border: 1px solid #d9dee6;
+      border-radius: 8px;
+      background: #fff;
+    }
+
+    .topbar {
+      display: grid;
+      grid-template-columns: 160px 1fr auto;
+      gap: 14px;
+      align-items: end;
+      padding: 14px;
+      margin-bottom: 14px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 390px;
+      gap: 14px;
+      align-items: start;
+    }
+
+    .panel {
+      padding: 14px;
+    }
+
+    .panel h2 {
+      margin: 0 0 12px;
+      font-size: 17px;
+    }
+
+    .examples,
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin: 10px 0 12px;
+    }
+
+    .status {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 700;
+    }
+
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #a0a7b0;
+    }
+
+    .dot.ok {
+      background: #167c3a;
+    }
+
+    .dot.error {
+      background: #b42318;
+    }
+
+    .field-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+
+    pre {
+      min-height: 250px;
+      max-height: 520px;
+      overflow: auto;
+      margin: 0;
+      border: 1px solid #e1e5ea;
+      border-radius: 6px;
+      background: #0f1720;
+      color: #dce7f3;
+      padding: 12px;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 13px;
+    }
+
+    .muted {
+      color: #68727f;
+      font-size: 13px;
+    }
+
+    @media (max-width: 860px) {
+      .topbar,
+      .grid,
+      .field-row {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>ENTREE Print Plugin SDK Playground</h1>
+
+    <section class="topbar">
+      <div>
+        <label for="port">Plugin port</label>
+        <input id="port" value="9779" inputmode="numeric">
+      </div>
+      <div>
+        <label for="printer">Printer name</label>
+        <input id="printer" value="cashier" placeholder="Example: cashier">
+      </div>
+      <div class="status" aria-live="polite">
+        <span id="status-dot" class="dot"></span>
+        <span id="status-text">SDK not loaded</span>
+      </div>
+    </section>
+
+    <section class="grid">
+      <div class="panel">
+        <h2>Command JSON</h2>
+        <div class="examples">
+          <button data-example="receipt">Receipt</button>
+          <button data-example="chinese">Chinese row</button>
+          <button data-example="html">HTML image</button>
+          <button data-example="beep">Beep</button>
+          <button data-example="drawer">Cash drawer</button>
+        </div>
+        <textarea id="command"></textarea>
+        <div class="actions">
+          <button id="load">Load SDK</button>
+          <button id="send" class="primary">Send Command</button>
+          <button id="format">Format JSON</button>
+          <button id="clear">Clear Log</button>
+        </div>
+      </div>
+
+      <aside class="panel">
+        <h2>Tools</h2>
+        <div class="field-row">
+          <button id="quick-print">Print Test Receipt</button>
+          <button id="quick-beep">Beep</button>
+          <button id="quick-drawer">Open Drawer</button>
+          <button id="printers">Printers</button>
+        </div>
+
+        <label for="job-id">Job id</label>
+        <input id="job-id" placeholder="Paste job id">
+        <div class="actions">
+          <button id="job">Get Job</button>
+          <button id="events">Subscribe Events</button>
+          <button id="stop-events" disabled>Stop Events</button>
+        </div>
+
+        <p class="muted">The SDK adds token and checksum automatically. This playground sends the object you edit here through <code>EntreePrint</code>.</p>
+        <pre id="log">Ready.</pre>
+      </aside>
+    </section>
+  </main>
+
+  <script>
+    const log = document.getElementById("log");
+    const port = document.getElementById("port");
+    const printer = document.getElementById("printer");
+    const command = document.getElementById("command");
+    const jobId = document.getElementById("job-id");
+    const statusDot = document.getElementById("status-dot");
+    const statusText = document.getElementById("status-text");
+    const stopEvents = document.getElementById("stop-events");
+    let eventSubscription = null;
+
+    function pluginUrl(path = "") {
+      return `http://127.0.0.1:${port.value}${path}`;
+    }
+
+    function setStatus(kind, text) {
+      statusDot.className = `dot ${kind || ""}`;
+      statusText.textContent = text;
+    }
+
+    function write(value, append = false) {
+      const text = typeof value === "string" ? value : JSON.stringify(value, null, 2);
+      log.textContent = append ? `${log.textContent}\n${text}` : text;
+      log.scrollTop = log.scrollHeight;
+    }
+
+    function receiptContent() {
+      const now = new Date();
+      return [
+        { type: "text", text: "ENTREE POS\n\u8fce\u5bbe\u9910\u5385", align: "center", bold: true, size: "large" },
+        { type: "text", text: "123 Main Street\n\u7535\u8bdd: 555-0108", align: "center" },
+        { type: "line" },
+        { type: "row", left: "Order", right: "#10086" },
+        { type: "row", left: "Table", right: "8" },
+        { type: "row", left: "Cashier", right: "Demo" },
+        { type: "row", left: "Time", right: now.toLocaleString() },
+        { type: "line" },
+        { type: "row", left: "Item / \u83dc\u54c1", right: "Total", bold: true },
+        { type: "row", left: "\u626c\u5dde\u7092\u996d x2", right: "17.98" },
+        { type: "row", left: "\u725b\u8089\u9762 x1", right: "13.50" },
+        { type: "row", left: "\u70ed\u8336 x2", right: "4.00" },
+        { type: "line" },
+        { type: "row", left: "Subtotal", right: "35.48" },
+        { type: "row", left: "Tax", right: "3.11" },
+        { type: "row", left: "TOTAL", right: "$38.59", bold: true },
+        { type: "line" },
+        { type: "barcode", format: "code128", value: "ORDER10086", height: 72, moduleWidth: 2, showText: true },
+        { type: "text", text: "THANK YOU\nPlease come again", align: "center", bold: true },
+        { type: "feed", lines: 1 }
+      ];
+    }
+
+    function examples() {
+      return {
+        receipt: {
+          printer: printer.value,
+          content: receiptContent()
+        },
+        chinese: {
+          printer: printer.value,
+          content: [
+            { type: "text", text: "\u4e2d\u6587\u83dc\u5355", align: "center", bold: true },
+            { type: "line" },
+            { type: "row", left: "\u725b\u8089\u9762 x1", right: "12.99" },
+            { type: "row", left: "\u626c\u5dde\u7092\u996d x2", right: "17.98" },
+            { type: "feed", lines: 2 }
+          ]
+        },
+        html: {
+          printer: printer.value,
+          html: "<div class='ticket'><h1>HTML Test</h1><p>This path renders as image.</p></div>",
+          style: "body{margin:0;font-family:Arial}.ticket{width:576px;padding:20px;font-size:24px}"
+        },
+        beep: {
+          type: "beep",
+          printer: printer.value
+        },
+        drawer: {
+          type: "open_cash_drawer",
+          printer: printer.value
+        }
+      };
+    }
+
+    function setCommand(value) {
+      command.value = JSON.stringify(value, null, 2);
+    }
+
+    async function loadSdk() {
+      if (window.EntreePrint) {
+        EntreePrint.configure({ baseUrl: pluginUrl() });
+        setStatus("ok", `SDK loaded ${EntreePrint.version}`);
+        return;
+      }
+
+      await new Promise((resolve, reject) => {
+        const script = document.createElement("script");
+        script.src = pluginUrl("/api.js");
+        script.onload = resolve;
+        script.onerror = () => reject(new Error("Unable to load /api.js."));
+        document.head.appendChild(script);
+      });
+
+      EntreePrint.configure({ baseUrl: pluginUrl() });
+      setStatus("ok", `SDK loaded ${EntreePrint.version}`);
+    }
+
+    async function waitForJob(id) {
+      for (let attempt = 0; attempt < 20; attempt++) {
+        const result = await EntreePrint.job(id);
+        const status = result.job && result.job.status;
+        if (["completed", "failed", "rendered"].includes(status)) return result;
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+      }
+      return EntreePrint.job(id);
+    }
+
+    async function sendCurrentCommand() {
+      await loadSdk();
+      const payload = JSON.parse(command.value);
+      const type = payload.type || (payload.html || payload.content ? "print" : "");
+      let ack;
+      if (type === "beep") {
+        ack = await EntreePrint.beep(payload);
+      } else if (type === "open_cash_drawer" || type === "drawer") {
+        ack = await EntreePrint.openCashDrawer(payload);
+      } else {
+        ack = await EntreePrint.print(payload);
+      }
+
+      jobId.value = ack.id || "";
+      write({ ack });
+      if (ack.id && type !== "beep" && type !== "open_cash_drawer" && type !== "drawer") {
+        write(await waitForJob(ack.id));
+      }
+    }
+
+    document.querySelectorAll("[data-example]").forEach((button) => {
+      button.addEventListener("click", () => setCommand(examples()[button.dataset.example]));
+    });
+
+    document.getElementById("load").addEventListener("click", async () => {
+      try {
+        await loadSdk();
+        write("SDK loaded.");
+      } catch (error) {
+        setStatus("error", "SDK load failed");
+        write(error.message);
+      }
+    });
+
+    document.getElementById("send").addEventListener("click", async () => {
+      try {
+        await sendCurrentCommand();
+      } catch (error) {
+        write(error.message);
+      }
+    });
+
+    document.getElementById("format").addEventListener("click", () => {
+      try {
+        setCommand(JSON.parse(command.value));
+      } catch (error) {
+        write(error.message);
+      }
+    });
+
+    document.getElementById("clear").addEventListener("click", () => write("Ready."));
+
+    document.getElementById("quick-print").addEventListener("click", async () => {
+      setCommand(examples().receipt);
+      await sendCurrentCommand().catch((error) => write(error.message));
+    });
+
+    document.getElementById("quick-beep").addEventListener("click", async () => {
+      setCommand(examples().beep);
+      await sendCurrentCommand().catch((error) => write(error.message));
+    });
+
+    document.getElementById("quick-drawer").addEventListener("click", async () => {
+      setCommand(examples().drawer);
+      await sendCurrentCommand().catch((error) => write(error.message));
+    });
+
+    document.getElementById("printers").addEventListener("click", async () => {
+      try {
+        await loadSdk();
+        write(await EntreePrint.printers());
+      } catch (error) {
+        write(error.message);
+      }
+    });
+
+    document.getElementById("job").addEventListener("click", async () => {
+      try {
+        await loadSdk();
+        write(await EntreePrint.job(jobId.value));
+      } catch (error) {
+        write(error.message);
+      }
+    });
+
+    document.getElementById("events").addEventListener("click", async () => {
+      try {
+        await loadSdk();
+        if (eventSubscription) eventSubscription.close();
+        eventSubscription = EntreePrint.subscribe((event) => write(event, true));
+        stopEvents.disabled = false;
+        write("Subscribed to printer and job events.");
+      } catch (error) {
+        write(error.message);
+      }
+    });
+
+    stopEvents.addEventListener("click", () => {
+      if (eventSubscription) eventSubscription.close();
+      eventSubscription = null;
+      stopEvents.disabled = true;
+      write("Stopped event subscription.");
+    });
+
+    port.addEventListener("change", () => {
+      if (window.EntreePrint) EntreePrint.configure({ baseUrl: pluginUrl() });
+    });
+
+    printer.addEventListener("change", () => {
+      try {
+        const current = JSON.parse(command.value);
+        current.printer = printer.value;
+        setCommand(current);
+      } catch {
+      }
+    });
+
+    setCommand(examples().receipt);
+  </script>
+</body>
+</html>

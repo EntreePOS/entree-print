@@ -1,0 +1,17 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <Nullable>enable</Nullable>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <ApplicationIcon>..\assets\entree-print.ico</ApplicationIcon>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="EntreePrintPlugin.Tests" />
+    <Compile Include="..\Shared\SecurityConfiguration.cs" Link="SecurityConfiguration.cs" />
+    <Compile Include="..\Shared\NetworkConfiguration.cs" Link="NetworkConfiguration.cs" />
+    <EmbeddedResource Include="..\assets\entree-print.ico" LogicalName="EntreePrint.Icon" />
+  </ItemGroup>
+</Project>

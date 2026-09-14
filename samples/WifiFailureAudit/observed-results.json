@@ -1,0 +1,37 @@
+{
+  "characterization": true,
+  "physicalPrinting": false,
+  "observations": [
+    {
+      "scenario": "lost_ack_same_process",
+      "submissions": 1,
+      "result": "sequential replay correctly deduplicated"
+    },
+    {
+      "scenario": "same_id_different_payload",
+      "ack": true,
+      "result": "changed content is acknowledged without a conflict or new output"
+    },
+    {
+      "scenario": "lost_ack_then_service_restart",
+      "submissions": 2,
+      "result": "same request is submitted again after ledger loss"
+    },
+    {
+      "scenario": "accepted_pending_service_state_recreated",
+      "recovered": false,
+      "result": "accepted job has no durable recovery source"
+    },
+    {
+      "scenario": "network_error_after_simulated_acceptance",
+      "submissions": 2,
+      "finalStatus": "failed",
+      "result": "whole job retried despite possible output; marked failed after both simulated acceptances"
+    },
+    {
+      "scenario": "two_names_share_physical_port",
+      "concurrentEntries": 2,
+      "result": "queue lock is by printer name, so aliases can enter backend concurrently; driver serialization not tested"
+    }
+  ]
+}
