@@ -38,6 +38,8 @@ The manually dispatched `Verify Windows installer` GitHub workflow builds the se
 
 This is real installer execution with printing left inactive. The receipt files are synthetic byte-retention fixtures, not accepted jobs or spooler-recovery evidence. [GitHub's Windows runners](https://docs.github.com/en/actions/reference/runners/github-hosted-runners#administrative-privileges) run as administrators with UAC disabled and contain development runtimes. A passing run does not establish interactive UAC behavior, fresh-user logon, a Windows client with no installed .NET, service-account startup or hardware/network recovery.
 
+The first successful real lifecycle run is [34819567689](https://github.com/EntreePOS/entree-print/actions/runs/34819567689), from `bb1432be8ed81fd06567da864461b12564ea7674`. Its [recorded result](evidence/windows-ci-34819567689.json) contains 64 checkpoints across the lifecycle phases. All 308 application tests also passed. The artifact is an unsigned development candidate, not a published beta release.
+
 ## Remaining installer release checks
 
 1. Clean Windows installation with no .NET runtime; confirm both packaged applications start.
