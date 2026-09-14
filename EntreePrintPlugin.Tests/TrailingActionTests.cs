@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.Json;
 using EntreePrintPlugin.Models;
 using EntreePrintPlugin.Services;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace EntreePrintPlugin.Tests;
@@ -176,14 +177,15 @@ public sealed class TrailingActionTests : IDisposable
     {
         var temporary=Path.Combine(directory,"jobs",Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes("one")))+".json.tmp");
         var entered=new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var storageBlocked=new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         await using var host=new Host(directory,(command,_)=>
         {
             if (command.Id=="one:after:cut") {Directory.CreateDirectory(temporary);entered.SetResult();}
             return Task.FromResult(new PrintExecutionResult("completed"));
-        });
+        },new StorageWaitLogger(storageBlocked));
         host.Processor.AcceptValidated(Command("one"));await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
         host.Processor.AcceptValidated(Command("two"));
-        await Task.Delay(350);
+        await storageBlocked.Task.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.Equal(new[]{"one","one:after:cut"},host.Calls);
         Directory.Delete(temporary);
         await Until(()=>JobStore.DisplayState(host.Jobs.Get("two")!)=="completed");
@@ -247,13 +249,24 @@ public sealed class TrailingActionTests : IDisposable
         public readonly CommandProcessor Processor;
         public readonly ConcurrentQueue<string> Calls=new();
         private readonly PrinterExecutionQueue queue=new(NullLogger<PrinterExecutionQueue>.Instance);
-        public Host(string directory,Func<AcceptedCommand,CancellationToken,Task<PrintExecutionResult>>? execute=null)
+        public Host(string directory,Func<AcceptedCommand,CancellationToken,Task<PrintExecutionResult>>? execute=null,
+            ILogger<CommandProcessor>? logger=null)
         {
             Events=new EventBroadcaster(Path.Combine(directory,"events"));Jobs=new JobStore(Events,Path.Combine(directory,"jobs"));
-            Processor=new CommandProcessor(new(){PrintRetryMaxAttempts=1},Jobs,new Backend(Calls,execute),queue,
-                new V2EndpointTests.Inventory(),NullLogger<CommandProcessor>.Instance);
+            Processor=new CommandProcessor(new(){PrintRetryMaxAttempts=1,PrintRetryDelayMs=250},Jobs,new Backend(Calls,execute),queue,
+                new V2EndpointTests.Inventory(),logger ?? NullLogger<CommandProcessor>.Instance);
         }
         public async ValueTask DisposeAsync(){await queue.StopAsync(CancellationToken.None);queue.Dispose();Jobs.Dispose();Events.Dispose();}
+    }
+    private sealed class StorageWaitLogger(TaskCompletionSource blocked) : ILogger<CommandProcessor>
+    {
+        public IDisposable? BeginScope<TState>(TState state) where TState:notnull => null;
+        public bool IsEnabled(LogLevel level) => true;
+        public void Log<TState>(LogLevel level,EventId id,TState state,Exception? error,Func<TState,Exception?,string> formatter)
+        {
+            if (formatter(state,error).StartsWith("Waiting to save trailing action state",StringComparison.Ordinal))
+                blocked.TrySetResult();
+        }
     }
     private sealed class Backend(ConcurrentQueue<string> calls,Func<AcceptedCommand,CancellationToken,Task<PrintExecutionResult>>? execute) : IPrinterBackend
     {

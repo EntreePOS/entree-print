@@ -82,7 +82,7 @@ public sealed class SdkServiceIntegrationTests
             }
             await node.WaitForExitAsync(deadline.Token);
             var error = await errors;
-            Assert.True(node.ExitCode == 0 && finished, $"Node SDK scenario {scenario} failed: {error}");
+            Assert.True(node.ExitCode == 0 && finished, $"Node SDK scenario {scenario} failed: {error}{Environment.NewLine}{string.Join(Environment.NewLine, host.Errors)}");
             Assert.Equal(expectedDeliveries, host.Backend.Calls);
             Assert.Equal(scenario is "events" or "after" ? 1 : expectedDeliveries, host.Jobs.List().Count);
             Assert.All(host.Backend.Executed, command =>
