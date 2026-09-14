@@ -37,6 +37,8 @@ Ordinary receipt printing uses the Windows driver's printable area and resolutio
 
 Direct `connect(options)` and `search().connect()` return the same library interface. The library code is bundled with the POS; the service handshake returns data, and the SDK returns the configured callable object. Connection still throws when the service is unavailable or has no installed printers.
 
+`render()` also returns `comparisonId`: an opaque ID for the prepared layout, driver measurements and local rendering/font inputs, or `null` when comparison is unavailable. Check `warnings` for that limitation. This metadata does not transfer a render or authorize backup printing; render IDs and accepted jobs remain owned by their original service. Matching IDs do not guarantee identical physical output or protect against later driver/font changes. Ordinary rendering and printing remain available when comparison is unavailable.
+
 ## HTTPS connections
 
 The service can use HTTPS on its configured port (9779 by default). Follow [certificate setup](../BETA_SETUP.md#https-setup) on the Windows service computer, then connect with the certificate's DNS name or IP address:

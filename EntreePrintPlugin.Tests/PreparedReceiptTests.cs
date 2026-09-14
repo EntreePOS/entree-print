@@ -10,6 +10,51 @@ public sealed class PreparedReceiptTests : IDisposable
     private static ReceiptTextLayout Layout(string text = "中文 receipt") => new(272, 60, [new(text, 0, 20, 120, 16, "Arial", false, false, "#000")], []);
 
     [Fact]
+    public void ComparisonEvidenceSurvivesRestartAndCannotBeChangedInStoredRecords()
+    {
+        var directory = Path.Combine(_directory, "renders");
+        var identity = new ServiceIdentity(_directory);
+        var store = new PreparedReceiptStore(directory, identity);
+        var comparison = "layout:" + new string('a', 64);
+        var receipt = store.Save("Kitchen", 72, "profile", Layout(), 203, comparison);
+        var reopened = new PreparedReceiptStore(directory, identity).Get(receipt.Id);
+        Assert.Equal(comparison, reopened.ComparisonId);
+        var view = JsonSerializer.SerializeToElement(PreparedReceiptStore.View(reopened));
+        Assert.Equal(comparison, view.GetProperty("ComparisonId").GetString());
+        Assert.Equal(0, view.GetProperty("warnings").GetArrayLength());
+        var jobDirectory = Path.Combine(_directory, "jobs");
+        using (var jobs = new JobStore(new EventBroadcaster(), jobDirectory))
+            jobs.Accept(new AcceptedCommand("id", "print", "Kitchen", "", "", "", null, receipt, "intent"), 1);
+        using (var jobs = new JobStore(new EventBroadcaster(), jobDirectory))
+            Assert.Equal(comparison, jobs.GetCommand("id")!.Prepared!.ComparisonId);
+        foreach (var path in new[] { Path.Combine(directory, receipt.Id + ".json"), Directory.GetFiles(jobDirectory, "*.json").Single() })
+            File.WriteAllText(path, File.ReadAllText(path).Replace(comparison, "layout:" + new string('b', 64)));
+        Assert.Throws<InvalidDataException>(() => store.Get(receipt.Id));
+        Assert.Throws<InvalidDataException>(() => new JobStore(new EventBroadcaster(), jobDirectory));
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("layout:abc")]
+    [InlineData("layout:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")]
+    public void InvalidComparisonIdsAreRejected(string comparison)
+    {
+        var store = new PreparedReceiptStore(Path.Combine(_directory, "renders"), new ServiceIdentity(_directory));
+        Assert.Throws<ArgumentException>(() => store.Save("Kitchen", 72, "profile", Layout(), 203, comparison));
+    }
+
+    [Fact]
+    public void UnavailableComparisonKeepsPreviewAvailableWithAWarning()
+    {
+        var store = new PreparedReceiptStore(Path.Combine(_directory, "renders"), new ServiceIdentity(_directory));
+        var receipt = store.Save("Kitchen", 72, "profile", Layout());
+        var view = JsonSerializer.SerializeToElement(PreparedReceiptStore.View(receipt));
+        Assert.Equal(JsonValueKind.Null, view.GetProperty("ComparisonId").ValueKind);
+        Assert.Equal(1, view.GetProperty("warnings").GetArrayLength());
+        Assert.Contains("<svg", view.GetProperty("html").GetString());
+    }
+
+    [Fact]
     public void PreviewExpiry_DoesNotEraseAcceptedArtifactOrPermitChangedReplay()
     {
         var clock = new TestClock();

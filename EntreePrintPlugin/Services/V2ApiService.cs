@@ -105,8 +105,9 @@ public sealed class V2ApiService(PluginSettings settings, ServiceIdentity identi
         try
         {
             var layout = await ReceiptLayoutEngine.PrepareAsync(html, width, work, token, settings.BrowserExecutablePath);
+            var comparison = ReceiptComparison.Create(layout, printer.DriverName, layoutSettings, token);
             return PreparedReceiptStore.View(renders.Save(printer.Name, width, LayoutVersion(printer, layoutSettings), layout,
-                layoutSettings.DpiX == layoutSettings.DpiY ? layoutSettings.DpiX : null));
+                layoutSettings.DpiX == layoutSettings.DpiY ? layoutSettings.DpiX : null, comparison));
         }
         finally
         {

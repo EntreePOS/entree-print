@@ -123,8 +123,30 @@ public sealed class V2EndpointTests
         Assert.DoesNotContain("<script", html);
         Assert.Equal(host.Identity.ServiceId, rendered.GetProperty("serviceId").GetString());
         Assert.Equal("positioned-text", rendered.GetProperty("renderer").GetString());
+        Assert.Matches("^layout:[a-f0-9]{64}$", rendered.GetProperty("comparisonId").GetString()!);
         Assert.Equal(host.Driver.Layout.PrintableWidthMm, rendered.GetProperty("widthMm").GetDecimal());
         Assert.Single(response.Headers.GetValues(V2Request.DigestHeader));
+        Assert.Empty(host.Jobs.List());
+        Assert.Equal(0, host.Backend.Calls);
+    }
+
+    [Fact]
+    public async Task RenderComparisonIgnoresQueueNameButDetectsChangedDriverPage()
+    {
+        await using var host = await Harness.Start();
+        async Task<string> Render(string name)
+        {
+            using var request = host.Request(JsonSerializer.Serialize(new { printer = name, html = "<p style='font:16px Arial'>Receipt</p>" }));
+            request.RequestUri = new Uri("/api/renders", UriKind.Relative);
+            var response = await host.Client.SendAsync(request);
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            return (await ReadJson(response)).GetProperty("comparisonId").GetString()!;
+        }
+        var first = await Render("Kitchen");
+        host.Inventory.Items = [host.Inventory.Items[0] with { Name = "Kitchen on backup" }];
+        Assert.Equal(first, await Render("Kitchen on backup"));
+        host.Driver.Layout = host.Driver.Layout with { OffsetXDots = host.Driver.Layout.OffsetXDots + 1 };
+        Assert.NotEqual(first, await Render("Kitchen on backup"));
         Assert.Empty(host.Jobs.List());
         Assert.Equal(0, host.Backend.Calls);
     }

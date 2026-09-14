@@ -535,7 +535,7 @@ public sealed class JobStore : IDisposable
     private static void ValidatePrepared(AcceptedCommand command)
     {
         if (command.Prepared is not { } receipt) return;
-        if (receipt.Printer != command.Printer || receipt.ContentHash != PreparedReceiptStore.Hash(receipt.Printer, receipt.WidthMm, receipt.ProfileVersion, receipt.Layout, receipt.Dpi))
+        if (receipt.Printer != command.Printer || receipt.ContentHash != PreparedReceiptStore.Hash(receipt.Printer, receipt.WidthMm, receipt.ProfileVersion, receipt.Layout, receipt.Dpi, receipt.ComparisonId))
             throw new InvalidDataException("Accepted receipt integrity check failed.");
         WindowsTextPrinter.Validate(receipt.Layout);
     }
