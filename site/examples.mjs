@@ -52,8 +52,8 @@ const page = await print.getJobs('cashier', {
   limit: 30
 });
 
-const job = await print.getJob(savedJob.id);
-const originalPreview = await print.getJobRender(job.id);`,
+const job = await print.getJob(savedJob);
+const originalPreview = await print.getJobRender(job);`,
   events: `const subscription = EntreePrint.subscribe(event => {
   const { serviceId, data } = event;
   if (event.type === 'sync') {

@@ -33,7 +33,7 @@
         <figcaption>Saved preview from the approved cashier test.<br>Chinese, English, QR and Code128.</figcaption>
       </figure>
     </section>
-    <div class="release-note" role="note"><strong>0.0.1-beta is in development.</strong> The installer is being prepared. <a href="#release">See release status</a>.</div>
+    <div class="release-note" role="note"><strong>0.0.1-beta is in development.</strong> Installer candidates are under test. <a href="#release">See release status</a>.</div>
     <div class="docs-layout" id="guide">
       <aside class="contents" aria-label="Guide contents">
         <label for="topic-search">Find a topic</label>
@@ -134,7 +134,7 @@ const printers = await print.getPrinters();</code></pre></div>
         </section>
         <section id="status" aria-labelledby="status-title">
           <h2 id="status-title">Read status with the right meaning</h2>
-          <p>Query the selected queue, retrieve job history, or show the original saved preview. Printer observations come from Windows; unsupported sensors may be unknown.</p>
+          <p>Query the selected queue, retrieve job history, or show the original saved preview. Pass the saved job object to reach its previously connected owner, even after selecting another server. Keep its job ID and service ID. Printer observations come from Windows; unsupported sensors may be unknown.</p>
           <div class="code-panel" data-example="status"><div class="code-toolbar"><span>JavaScript</span><button class="copy" type="button" aria-label="Copy status example">Copy</button></div><pre tabindex="0"><code>const status = await print.target('cashier')
   .status({ refresh: true });
 
@@ -144,8 +144,8 @@ const page = await print.getJobs('cashier', {
   limit: 30
 });
 
-const job = await print.getJob(savedJob.id);
-const originalPreview = await print.getJobRender(job.id);</code></pre></div>
+const job = await print.getJob(savedJob);
+const originalPreview = await print.getJobRender(job);</code></pre></div>
           <h3>Keep a print monitor up to date</h3>
           <p>Subscribe to job and printer changes. The SDK resumes missed updates after a disconnect and refreshes current state when older history has expired. Use <code>sync: live</code> to show that the monitor has caught up.</p>
           <div class="code-panel" data-example="events"><div class="code-toolbar"><span>JavaScript</span><button class="copy" type="button" aria-label="Copy events example">Copy</button></div><pre tabindex="0"><code>const subscription = EntreePrint.subscribe(event =&gt; {
@@ -240,15 +240,15 @@ const beep = current.after?.beep;</code></pre></div>
           <h2 id="api-title">API at a glance</h2>
           <div class="api-groups">
             <div><h3>Connect</h3><code>EntreePrint.config(options)</code><code>EntreePrint.connect(options?)</code><code>EntreePrint.search(options?)</code><code>EntreePrint.disconnect()</code><p>Configure the service and manage SDK connections.</p></div>
-            <div><h3>Print library</h3><code>print.getPrinters(options?)</code><code>print.target(name)</code><code>print.getJobs(printer?, filters?)</code><code>print.getJob(idOrKey)</code><code>print.getJobRender(id)</code><code>print.reprintJob(id, options)</code><p>Queries and tickets remain bound to this service.</p></div>
+            <div><h3>Print library</h3><code>print.getPrinters(options?)</code><code>print.target(name)</code><code>print.getJobs(printer?, filters?)</code><code>print.getJob(job)</code><code>print.getJobRender(job)</code><code>print.reprintJob(job, options)</code><p>Tickets and bare job IDs stay on this service. Job objects resolve their recorded owner.</p></div>
             <div><h3>Ticket</h3><code>target.setContent(content)</code><code>ticket.setWidth(mm)</code><code>ticket.render()</code><code>ticket.print(options?)</code><p>Builders return immutable ticket snapshots.</p></div>
             <div><h3>Client recovery</h3><code>EntreePrint.outbox()</code><code>outbox.enqueue(intent)</code><code>outbox.flush(print)</code><code>outbox.list()</code><p>Retain client work before the service accepts it.</p></div>
           </div>
           <p><a href="https://github.com/EntreePOS/entree-print/blob/main/sdk/README.md">Read the full SDK guide</a> for method arguments, errors, events and recovery controls.</p>
         </section>
         <section id="release" aria-labelledby="release-title">
-          <h2 id="release-title">Build now. Installer next.</h2>
-          <p>The 0.0.1-beta milestone is still in development. Source builds and printer clarity checks are complete for the tested setup. Installer deployment, protected LAN access and failure pilots remain open. No mature installer is published yet.</p>
+          <h2 id="release-title">Installer testing is in progress.</h2>
+          <p>Windows installer candidates pass automated installation, update and removal checks. We are still verifying tray startup, live service and network recovery, and automatic backup printing. The beta release is not published yet.</p>
           <p>For development, use the .NET SDK pinned by <code>global.json</code>, Node.js 22+, and Edge or Chrome. Publish to a new directory.</p>
           <div class="code-panel" data-example="build"><div class="code-toolbar"><span>PowerShell</span><button class="copy" type="button" aria-label="Copy build example">Copy</button></div><pre tabindex="0"><code>dotnet test EntreePrintPlugin.Tests/EntreePrintPlugin.Tests.csproj --artifacts-path &quot;$env:TEMP\EntreePrintTests&quot;
 node --test sdk/test/*.test.mjs
