@@ -1,6 +1,6 @@
 # Entree Print SDK — 0.0.1-beta development
 
-This is the SDK for the fresh 0.0.1 API under `/api`. There is no prototype API compatibility layer. Bundle the SDK directory with your application; `entree-print.mjs` imports `outbox.mjs`. It contains no installation token and does not download executable code from the print service. Entree Print is standalone; Entree POS is one possible client. The package is private while release verification remains incomplete.
+This is the SDK for the fresh 0.0.1 API under `/api`. There is no prototype API compatibility layer. Bundle the SDK directory with your application; `entree-print.mjs` imports `outbox.mjs` and `events.mjs`. It contains no installation token and does not download executable code from the print service. Entree Print is standalone; Entree POS is one possible client. The package is private while release verification remains incomplete.
 
 ```javascript
 import EntreePrint from './entree-print.mjs';
@@ -45,10 +45,40 @@ Direct `connect(options)` and `search().connect()` return the same library inter
 - `getPrinters({ refresh })`, `getJob(id)`, `getJob({ idempotencyKey })`, `getJobRender(id)`.
 - `getJobs(printerName?, { station?, orderID?, status?, since?, limit?, cursor? })` returns `{ items, nextCursor }`; default 30, maximum 100. `status` accepts one state or an array. `since` is an ISO date/time with a time-zone offset or `Z`.
 - `reprintJob(id, { idempotencyKey })` requires a new, persisted operator-action key and returns the linked receipt job.
-- `subscribe(handler, { events: ['connection'] })`, returning `{ close() }`. Only local connection events are supported so far; job/printer event subscriptions are pending.
+- `subscribe(handler, { events? })`, returning `{ close() }`. Defaults to connection, printer, job and sync events. Use `{ events: ['connection'] }` for heartbeat-only monitoring.
 - Automatic service heartbeat after connect; `resume()` performs an immediate check. Browser pageshow/focus/visibility hooks trigger a fresh check and inventory refresh; Electron can supply its powerMonitor resume event through the native factory below.
 
-Durable event replay and `after` actions are not implemented yet. Do not treat this as the finished API contract; see [API_DESIGN.md](../API_DESIGN.md).
+Ordered `after` actions remain unimplemented. See [API_DESIGN.md](../API_DESIGN.md) for the full target contract.
+
+### Resumable status updates
+
+```javascript
+const subscription = EntreePrint.subscribe(event => {
+  if (event.type === 'sync') {
+    // Initial connection/history gap: replace the complete printer inventory.
+    if (event.data.printers) monitor.replacePrinters(event.serviceId, event.data.printers);
+    monitor.setSyncState(event.serviceId, event.data.state);
+  }
+  if (event.type === 'printer') {
+    if (event.data.removed) monitor.removePrinter(event.serviceId, event.entityId);
+    else monitor.updatePrinter(event.serviceId, event.data);
+  }
+  if (event.type === 'job') monitor.updateJob(event.serviceId, event.data);
+}, { events: ['printer', 'job'] });
+
+// When this view/application no longer needs status updates:
+subscription.close();
+```
+
+Subscriptions observe verified connected services in this SDK instance. Equivalent aliases share one stream when their credentials and heartbeat policies match. Adding a remote subscriber refreshes the shared snapshot so the new view receives current state. Closing the last remote subscriber stops the stream; heartbeat monitoring continues until `disconnect()`. Callback exceptions and mutations are isolated between listeners.
+
+Remote subscriptions also receive `sync` lifecycle events, even when the filter lists only printer/job events: `synchronizing`, `replaying`, `live` and `reconnecting`. Connection `online` describes service reachability; `sync: live` means the status stream has caught up. Do not mark the monitor current from heartbeat alone. A synchronization-start event carries the **complete** printer list, including an empty array after all queues are removed. Job snapshot entries have `snapshot: true`, `id: null` and their current job version. Printer snapshot entries have `snapshot: true`, `id: null`, `version: null`. These are current observations, not fabricated durable events.
+
+Live events have `{ id, serviceId, type, entityId, version, occurredAt, data }`. The SDK sends the service-owned cursor in `Last-Event-ID` and the access token only in the authorization header. It detects malformed/foreign/gapped events and never advances past them. It reconnects with bounded backoff (up to 30 seconds) and a 30-second silence deadline. Repeated job versions and already acknowledged sequence IDs are suppressed. Removed queues emit a printer event with `{ name, removed: true }`.
+
+On initial subscription or expired history, the SDK obtains a locked printer snapshot/cursor, pages **unfiltered** jobs in stable acceptance order, then replays from that earlier cursor. Job versions prevent older replay from overwriting newer page observations. This converges on current state; pagination is not an instantaneous frozen job snapshot. If the event window expires during recovery, the SDK repeats recovery without skipping the gap. Consumers that also issue their own job reads should compare job versions before updating shared state. Printer sensor values can be unknown, and observations age even if no new event arrives; use `status.observedAt` and connection freshness.
+
+Recovery only reads state. It never flushes an outbox, renders, prints, cancels, rekeys or moves a job. Cursors are in-memory within the SDK; a new SDK instance reconstructs current state from the service. Separate POS audit/export storage remains application-owned. Controlled tests and an actual SDK/TestServer replay across storage reopen cover this contract; real LAN interruptions and OS service restarts remain beta verification work.
 
 ## Connecting through a backup server
 

@@ -24,4 +24,4 @@ Open `/playground.html` for editable receipt, kitchen and QR/barcode presets. St
 
 The playground generates an application example with a separate operator-triggered print function. It does not print, open drawers or send raw commands. Actual browser-to-service rendering needs a reachable compatible service, its token, and permission for the page origin. HTTPS hosting can restrict access to the current HTTP service; the loopback development server is available for local testing. Do not disable browser security to work around network restrictions.
 
-The site stages `sdk/entree-print.mjs` and `sdk/outbox.mjs` directly from the SDK source; no forked copy is maintained. Changes to those SDK files trigger Pages publication too. Run `node --test site/playground.test.mjs` for content/code-generation checks (also included by `verify.mjs`).
+The site stages `sdk/entree-print.mjs`, `sdk/outbox.mjs` and `sdk/events.mjs` directly from the SDK source; no forked copy is maintained. Changes to those SDK files trigger Pages publication too. Run `node --test site/playground.test.mjs` for content/code-generation checks (also included by `verify.mjs`).

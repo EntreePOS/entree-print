@@ -36,7 +36,7 @@ foreach ($project in @(
     if ($LASTEXITCODE -ne 0) { throw "$($project.Name) publish failed. Incomplete output is not a package; use a new directory after fixing the build." }
 }
 New-Item -ItemType Directory -Path (Join-Path $OutputRoot 'sdk'), (Join-Path $OutputRoot 'scripts') | Out-Null
-foreach ($name in @('entree-print.mjs', 'outbox.mjs', 'native.mjs', 'native-discovery.mjs', 'sqlite-outbox.mjs', 'package.json', 'README.md')) {
+foreach ($name in @('entree-print.mjs', 'outbox.mjs', 'events.mjs', 'native.mjs', 'native-discovery.mjs', 'sqlite-outbox.mjs', 'package.json', 'README.md')) {
     Copy-Item -LiteralPath (Join-Path $repoRoot "sdk\$name") -Destination (Join-Path $OutputRoot "sdk\$name")
 }
 foreach ($name in @('verify-package.ps1', 'uninstall-service.ps1')) {

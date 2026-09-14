@@ -3,7 +3,7 @@ name: Publish usage guide
 on:
   push:
     branches: [main]
-    paths: ['site/**', 'sdk/entree-print.mjs', 'sdk/outbox.mjs', '.github/workflows/pages.yml']
+    paths: ['site/**', 'sdk/entree-print.mjs', 'sdk/outbox.mjs', 'sdk/events.mjs', '.github/workflows/pages.yml']
   workflow_dispatch:
 
 permissions:

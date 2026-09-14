@@ -145,6 +145,25 @@ const page = await print.getJobs('cashier', {
 
 const job = await print.getJob(savedJob.id);
 const originalPreview = await print.getJobRender(job.id);</code></pre></div>
+          <h3>Keep a print monitor up to date</h3>
+          <p>Subscribe to job and printer changes. The SDK resumes missed updates after a disconnect and refreshes current state when older history has expired. Use <code>sync: live</code> to show that the monitor has caught up.</p>
+          <div class="code-panel" data-example="events"><div class="code-toolbar"><span>JavaScript</span><button class="copy" type="button" aria-label="Copy events example">Copy</button></div><pre tabindex="0"><code>const subscription = EntreePrint.subscribe(event =&gt; {
+  if (event.type === 'sync') {
+    if (event.data.printers) {
+      monitor.replacePrinters(event.serviceId, event.data.printers);
+    }
+    monitor.setSyncState(event.serviceId, event.data.state);
+  }
+  if (event.type === 'job') monitor.updateJob(event.serviceId, event.data);
+  if (event.type === 'printer') {
+    if (event.data.removed) monitor.removePrinter(event.serviceId, event.entityId);
+    else monitor.updatePrinter(event.serviceId, event.data);
+  }
+}, { events: ['job', 'printer'] });
+
+// Close when the monitor view is no longer needed.
+subscription.close();</code></pre></div>
+          <p>The <code>monitor</code> methods represent your application's UI or shared state. A synchronization event replaces the full printer list; job updates carry versions. Monitoring does not resend tickets.</p>
           <dl class="status-meaning">
             <div><dt>Accepted by the plugin</dt><dd>The job is saved durably. An observed offline or paper-out destination can wait while other printers continue.</dd></div>
             <div><dt>Completed by Windows</dt><dd>The spooler reported completion for that job. It is not independent confirmation that paper emerged.</dd></div>

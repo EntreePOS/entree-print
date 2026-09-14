@@ -266,6 +266,36 @@ async function durableClientOutbox(sqlite = false) {
   }
 }
 
+async function eventRecovery() {
+  const print = await api.connect();
+  const received = [];
+  let ready;
+  let live = new Promise(resolve => { ready = resolve; });
+  const subscription = api.subscribe(event => {
+    received.push(event);
+    if (event.type === 'sync' && event.data.state === 'live') ready();
+  }, {events:['job','printer']});
+  try {
+    await Promise.race([live,new Promise((_,reject)=>{const timer=setTimeout(()=>reject(Error('Event catch-up timed out')),10000);timer.unref();})]);
+    const jobs = received.filter(event=>event.type==='job');
+    assert.deepEqual(jobs.map(event=>event.version),[1,2]);
+    assert.deepEqual(jobs.map(event=>event.data.state),['accepted','completed']);
+    assert.equal(jobs[0].data.metadata.orderID,'订单42');
+    assert.equal(jobs[1].id,print.connection.serviceId+':2');
+    const restarted = await control('restart');
+    assert.equal(restarted.serviceId,print.connection.serviceId);
+    const updated = await control('updateEventFixture');
+    live = new Promise(resolve=>{ready=resolve;});
+    await Promise.race([live,new Promise((_,reject)=>{const timer=setTimeout(()=>reject(Error('Event resume timed out')),10000);timer.unref();})]);
+    const latest = received.filter(event=>event.type==='job');
+    assert.deepEqual(latest.map(event=>event.version),[1,2,3]);
+    assert.equal(latest.at(-1).id,updated.cursor);
+    assert.equal(received.filter(event=>event.type==='sync' && event.data.state==='synchronizing').length,1);
+    assert.equal(jobWires.length,0);assert.equal(renderCalls,0);
+    assert.equal((await control('inspect')).deliveries.length,0);
+  } finally {subscription.close();}
+}
+
 try {
   const scenario = process.argv[2];
   if (scenario === 'lost-ack') await lostAck();
@@ -275,6 +305,7 @@ try {
   else if (scenario === 'key-lookup') await keyLookupAfterReload();
   else if (scenario === 'outbox') await durableClientOutbox();
   else if (scenario === 'sqlite-outbox') await durableClientOutbox(true);
+  else if (scenario === 'events') await eventRecovery();
   else throw new Error(`Unknown scenario: ${scenario}`);
   process.stdout.write(JSON.stringify({ done: true, scenario }) + '\n');
 } catch (error) {

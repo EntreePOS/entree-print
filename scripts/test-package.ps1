@@ -5,7 +5,7 @@ $testRoot = Join-Path ([IO.Path]::GetTempPath()) ('EntreePackageTests-' + [Guid]
 $required = @(
     'service/EntreePrintPlugin.exe', 'service/EntreePrintPlugin.dll', 'service/EntreePrintPlugin.runtimeconfig.json', 'service/appsettings.json',
     'tray/EntreePrintTray.exe', 'tray/EntreePrintTray.dll', 'tray/EntreePrintTray.runtimeconfig.json',
-    'sdk/entree-print.mjs', 'sdk/outbox.mjs', 'sdk/native.mjs', 'sdk/native-discovery.mjs', 'sdk/sqlite-outbox.mjs', 'sdk/package.json', 'sdk/README.md',
+    'sdk/entree-print.mjs', 'sdk/outbox.mjs', 'sdk/events.mjs', 'sdk/native.mjs', 'sdk/native-discovery.mjs', 'sdk/sqlite-outbox.mjs', 'sdk/package.json', 'sdk/README.md',
     'scripts/verify-package.ps1', 'scripts/uninstall-service.ps1',
     'README.md', 'BETA_SETUP.md', 'API_DESIGN.md', 'API_V2_IMPLEMENTATION.md', 'BETA_RELEASE_CHECKLIST.md'
 )

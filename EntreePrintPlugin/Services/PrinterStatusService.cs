@@ -50,14 +50,10 @@ public sealed class PrinterStatusService(
         timeout.CancelAfter(TimeSpan.FromSeconds(8));
         var cancellationToken = timeout.Token;
         var records = await QueryPrintersAsync(cancellationToken);
-        _printers = records.ToArray(); // Publish a complete inventory; never expose a partly rebuilt list.
-        var snapshot = GetCachedPrinters();
-        events.Publish("printers", snapshot);
-        foreach (var record in snapshot)
-        {
-            events.Publish("printer", record);
-        }
-        return snapshot;
+        var snapshot = records.ToArray();
+        // Checkpoints cannot pass an inventory publication that failed halfway.
+        events.PublishInventory(_printers, snapshot, () => _printers = snapshot);
+        return GetCachedPrinters();
     }
 
     public override async Task StopAsync(CancellationToken cancellationToken)

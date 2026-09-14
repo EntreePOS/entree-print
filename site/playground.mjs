@@ -143,7 +143,7 @@ EntreePrint.subscribe(event => {
     feedback('connection-status', 'Service connection is online. Choose a printer to render.');
   }
   syncButtons();
-});
+}, { events:['connection'] });
 new ResizeObserver(showFrame).observe($('preview').parentElement);
 addEventListener('pagehide', () => EntreePrint.disconnect());
 resetExample();

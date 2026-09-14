@@ -25,7 +25,7 @@ builder.WebHost.UseUrls(settings.ListenUri.AbsoluteUri);
 builder.Services.AddPrintCors(settings);
 
 builder.Services.AddSingleton(settings);
-builder.Services.AddSingleton(_ => new EventBroadcaster(Path.Combine(settings.SpoolPath, "events")));
+builder.Services.AddSingleton(_ => new EventBroadcaster(Path.Combine(settings.SpoolPath, "events"), settings));
 builder.Services.AddSingleton(provider => new JobStore(provider.GetRequiredService<EventBroadcaster>(), Path.Combine(settings.SpoolPath, "jobs"), receiptRetentionDays: settings.ReceiptRetentionDays));
 builder.Services.AddHostedService<JobRetentionService>();
 builder.Services.AddSingleton(provider =>

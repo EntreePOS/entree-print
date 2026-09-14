@@ -42,6 +42,10 @@ public static class V2Endpoints
         group.MapGet("/health", (V2ApiService api, HttpRequest request) => api.Health(RequestId(request, false)));
         group.MapGet("/heartbeat", (V2ApiService api, HttpRequest request) => api.Health(RequestId(request, true)));
         group.MapGet("/connection", (V2ApiService api, HttpRequest request, CancellationToken token) => api.ConnectionAsync(token, request.Host.Host));
+        group.MapGet("/events/checkpoint", (HttpRequest request, EventBroadcaster events, JobStore jobs, V2ApiService api, ServiceIdentity identity) =>
+            EventStream.Checkpoint(request, events, jobs, api, identity));
+        group.MapGet("/events", (HttpRequest request, EventBroadcaster events, JobStore jobs, V2ApiService api, ServiceIdentity identity) =>
+            EventStream.Open(request, events, jobs, api, identity));
         group.MapGet("/printers", (V2ApiService api, HttpRequest request, CancellationToken token) => api.InventoryAsync(request.Query["refresh"] == "true", token));
         group.MapGet("/printers/status", (V2ApiService api, HttpRequest request, CancellationToken token) =>
         {
@@ -95,9 +99,9 @@ public static class V2Endpoints
         var status = code switch
         {
             "UNAUTHORIZED" => 401,
-            "AUTH_NOT_CONFIGURED" or "PRINTER_QUERY_FAILED" or "PRINTER_SETTINGS_UNAVAILABLE" or "RENDER_BUSY" or "RENDER_STORE_FULL" or "QUEUE_FULL" or "STORAGE_UNAVAILABLE" => 503,
+            "AUTH_NOT_CONFIGURED" or "PRINTER_QUERY_FAILED" or "PRINTER_SETTINGS_UNAVAILABLE" or "RENDER_BUSY" or "RENDER_STORE_FULL" or "QUEUE_FULL" or "STORAGE_UNAVAILABLE" or "EVENTS_UNAVAILABLE" => 503,
             "JOB_NOT_FOUND" or "PRINTER_NOT_FOUND" or "RENDER_NOT_FOUND" => 404,
-            "RENDER_EXPIRED" or "ARTIFACT_EXPIRED" => 410,
+            "RENDER_EXPIRED" or "ARTIFACT_EXPIRED" or "EVENT_CURSOR_EXPIRED" => 410,
             "IDEMPOTENCY_CONFLICT" or "SERVICE_MISMATCH" or "RENDER_PRINTER_MISMATCH" or "PRINTER_PROFILE_CHANGED" or "PRINTER_SETTINGS_CHANGED" or "JOB_NOT_REPRINTABLE" or "REPRINT_CONTENT_CHANGED" => 409,
             "REQUEST_TOO_LARGE" or "RENDER_TOO_LARGE" => 413,
             _ => 422

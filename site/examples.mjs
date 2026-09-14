@@ -54,6 +54,22 @@ const page = await print.getJobs('cashier', {
 
 const job = await print.getJob(savedJob.id);
 const originalPreview = await print.getJobRender(job.id);`,
+  events: `const subscription = EntreePrint.subscribe(event => {
+  if (event.type === 'sync') {
+    if (event.data.printers) {
+      monitor.replacePrinters(event.serviceId, event.data.printers);
+    }
+    monitor.setSyncState(event.serviceId, event.data.state);
+  }
+  if (event.type === 'job') monitor.updateJob(event.serviceId, event.data);
+  if (event.type === 'printer') {
+    if (event.data.removed) monitor.removePrinter(event.serviceId, event.entityId);
+    else monitor.updatePrinter(event.serviceId, event.data);
+  }
+}, { events: ['job', 'printer'] });
+
+// Close when the monitor view is no longer needed.
+subscription.close();`,
   recovery: `// Reconnect to the saved owning service, then reconcile.
 const print = await EntreePrint.connect({
   ip: settings.printHost,

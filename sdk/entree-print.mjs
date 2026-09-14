@@ -1,4 +1,5 @@
 import { createIndexedDbOutboxStorage, createOutboxController } from './outbox.mjs';
+import { createEventMonitor } from './events.mjs';
 
 const DIGEST = 'X-Entree-Content-SHA256';
 const SERVICE = 'X-Entree-Service-ID';
@@ -67,6 +68,7 @@ export function createEntreePrint(options = {}, dependencies = {}) {
     now: () => Date.now(), setTimeout: (...args) => globalThis.setTimeout(...args),
     clearTimeout: (...args) => globalThis.clearTimeout(...args), ...dependencies };
   const listeners = new Set();
+  const eventMonitors = new Map();
   const sessions = new Set();
   const monitors = new Map();
   const discoveries = new Set();
@@ -95,7 +97,25 @@ export function createEntreePrint(options = {}, dependencies = {}) {
 
   function emit(data) {
     const event = { type: 'connection', sequence: ++sequence, data: snapshot(data) };
-    for (const handler of listeners) { try { handler(snapshot(event)); } catch { /* A POS view must not break monitoring. */ } }
+    deliver(event);
+  }
+  function deliver(event) {
+    for (const listener of listeners) if (listener.events.includes(event.type) || (event.type === 'sync' && listener.remote)) {
+      try { listener.handler(snapshot(event)); } catch { /* A POS view must not break monitoring. */ }
+    }
+  }
+  function updateEventMonitors(refresh = false) {
+    const wanted = [...listeners].some(listener => listener.remote);
+    if (!wanted) { for (const monitor of eventMonitors.values()) monitor.close(); eventMonitors.clear(); return; }
+    for (const owner of new Set([...monitors.values()])) {
+      if (owner.disabled) continue;
+      let monitor = eventMonitors.get(owner);
+      if (!monitor) {
+        monitor = createEventMonitor(owner,io,deliver,EntreePrintError);
+        eventMonitors.set(owner,monitor); monitor.start();
+      } else if (refresh) monitor.refresh();
+      else monitor.wake();
+    }
   }
   function randomKey() {
     if (!io.crypto?.getRandomValues) fail('CRYPTO_UNAVAILABLE', 'A cryptographic random source is required to create a print intent.');
@@ -133,6 +153,7 @@ export function createEntreePrint(options = {}, dependencies = {}) {
         printersStale: state !== 'online' });
     }
     stop() {
+      eventMonitors.get(this)?.close(); eventMonitors.delete(this);
       this.disabled = true; this.lifetime.abort(); io.clearTimeout(this.timer); this.timer = null;
       this.connecting = null; this.polling = null;
       this.pollGeneration++; this.waking = null;
@@ -234,6 +255,7 @@ export function createEntreePrint(options = {}, dependencies = {}) {
       }
       owner.schedule();
       watchResume();
+      updateEventMonitors();
     }
     async ready() {
       if (this.disabled) fail('NOT_CONNECTED', 'Call connect() before using a disconnected client.');
@@ -808,10 +830,12 @@ export function createEntreePrint(options = {}, dependencies = {}) {
     subscribe(handler, options = {}) {
       fields(options, ['events']);
       if (typeof handler !== 'function') fail('REQUEST_INVALID', 'subscribe requires a callback.');
-      if (options.events !== undefined && (!Array.isArray(options.events) || options.events.some(event => event !== 'connection')))
-        fail('EVENT_UNSUPPORTED', 'This SDK currently supports local connection events only.');
-      const listener = event => { if (!options.events || options.events.includes(event.type)) handler(event); };
-      listeners.add(listener); return { close() { listeners.delete(listener); } };
+      const events = options.events ?? ['connection','printer','job','sync'];
+      if (!Array.isArray(events) || !events.length || events.some(event => !['connection','printer','job','sync'].includes(event)))
+        fail('EVENT_UNSUPPORTED', 'Use connection, printer, job or sync events.');
+      const listener = { handler, events:[...events], remote:events.some(event => event !== 'connection') };
+      listeners.add(listener); updateEventMonitors(listener.remote);
+      return { close() { listeners.delete(listener); updateEventMonitors(); } };
     },
     // Call from Electron resume or a browser visibility handler; this never submits a print job.
     resume() { return Promise.all([...sessions].map(session => session.poll())); }

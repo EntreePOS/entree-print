@@ -70,6 +70,8 @@ Awaiting `search()` collects verified available servers. `search().connect()` se
 
 An accepted job means the plugin saved it. Windows completion is a separate observation and is not independent confirmation that paper emerged. Never create another intent key merely because a response was lost.
 
+For a live print monitor, use [`EntreePrint.subscribe()`](sdk/README.md#resumable-status-updates). Job and printer updates resume after a connection loss; expired history triggers a current-state refresh. Synchronization events distinguish catching up from being current, and removed Windows queues are reported explicitly. Monitoring never resends tickets.
+
 ## Optional client outbox
 
 The browser/Electron renderer SDK can retain unsent receipts in IndexedDB. Node/Electron main clients can use the optional [SQLite outbox](sdk/README.md#node-and-electron-main-storage). Call `enqueue()` before network submission, then `flush()` with the owning connected library. Each printer progresses in order; another printer can proceed independently.

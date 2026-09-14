@@ -2,7 +2,7 @@ import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 const types = { '/':'text/html', '/index.html':'text/html', '/styles.css':'text/css', '/app.js':'text/javascript',
   '/playground.html':'text/html', '/playground.css':'text/css', '/playground.mjs':'text/javascript', '/playground-data.mjs':'text/javascript',
-  '/sdk/entree-print.mjs':'text/javascript', '/sdk/outbox.mjs':'text/javascript',
+  '/sdk/entree-print.mjs':'text/javascript', '/sdk/outbox.mjs':'text/javascript', '/sdk/events.mjs':'text/javascript',
   '/assets/printer.png':'image/png', '/assets/receipt.html':'text/html', '/assets/receipt.svg':'image/svg+xml' };
 const port = Number(process.env.ENTREE_DOCS_PORT || 19780);
 const server = createServer(async (request, response) => {

@@ -7,8 +7,42 @@ namespace EntreePrintPlugin.Services;
 public sealed class EventBroadcaster : IDisposable
 {
     private readonly ConcurrentDictionary<Guid, Channel<PrintEvent>> _subscribers = new();
+    private readonly PluginSettings _settings;
+    private readonly object _inventoryGate = new();
+    private bool _inventoryComplete = true;
     public DurableEventLog? History { get; }
-    public EventBroadcaster(string? directory = null) => History = directory is null ? null : new DurableEventLog(directory);
+    public EventBroadcaster(string? directory = null, PluginSettings? settings = null)
+    { History = directory is null ? null : new DurableEventLog(directory); _settings = settings ?? new PluginSettings(); }
+    internal EventBroadcaster(DurableEventLog history, PluginSettings settings)
+    { History = history; _settings = settings; }
+    internal int SubscriberCount => _subscribers.Count;
+
+    internal T CaptureInventory<T>(Func<T> capture)
+    {
+        lock (_inventoryGate)
+        {
+            if (!_inventoryComplete) throw new CommandException("EVENTS_UNAVAILABLE", "Printer inventory publication is pending. Retry the checkpoint.");
+            return capture();
+        }
+    }
+
+    internal void PublishInventory(IReadOnlyList<PrinterStatusRecord> previous, IReadOnlyList<PrinterStatusRecord> current, Action commit)
+    {
+        lock (_inventoryGate)
+        {
+            _inventoryComplete = false;
+            foreach (var removed in previous.Where(old => !current.Any(item => item.Name.Equals(old.Name, StringComparison.OrdinalIgnoreCase))))
+            {
+                var data = new { name = removed.Name, removed = true };
+                History?.Append("printer", removed.Name, 0, DateTimeOffset.UtcNow, data);
+                Broadcast("printer", data);
+            }
+            foreach (var printer in current) Publish("printer", printer);
+            commit();
+            _inventoryComplete = true;
+            Broadcast("printers", current);
+        }
+    }
 
     public ChannelReader<PrintEvent> Subscribe(out Guid subscriptionId)
     {
@@ -35,7 +69,7 @@ public sealed class EventBroadcaster : IDisposable
     public void Publish(string type, object? data)
     {
         if (data is PrinterStatusRecord printer && type == "printer")
-            History?.Append(type, printer.Name, 0, printer.UpdatedAt, printer);
+            History?.Append(type, printer.Name, 0, printer.UpdatedAt, V2ApiService.PrinterView(_settings, printer));
         Broadcast(type, data);
     }
 

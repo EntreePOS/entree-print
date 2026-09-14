@@ -169,7 +169,7 @@ test('lost acknowledgement stays on its original ticket owner after selecting a 
 
 test('disconnect inside the selected connection event cannot return a live library', async t => {
   const {api,clock} = harness(t);
-  api.subscribe(event => { if (event.data.state === 'online') api.disconnect(); });
+  api.subscribe(event => { if (event.data.state === 'online') api.disconnect(); }, { events:['connection'] });
   await assert.rejects(api.connect({nodes:nodes()}), {code:'CONNECTION_SUPERSEDED'});
   assert.equal(clock.timers.size,0);
 });

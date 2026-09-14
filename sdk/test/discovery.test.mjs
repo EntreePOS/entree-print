@@ -185,7 +185,7 @@ test('ordinary browser without native adapter reports discovery unavailable with
 
 test('resume observation marks stale, refreshes inventory, and removes lifecycle listeners on disconnect', async t => {
   const { api, state } = setup(t);
-  const events = []; api.subscribe(event => events.push(event.data));
+  const events = []; api.subscribe(event => events.push(event.data), { events:['connection'] });
   state.nodes.set('old-host', { id: 'original' }); await api.connect();
   assert.equal(state.resumeListeners, 1);
   state.wake(); state.wake(); await flush();

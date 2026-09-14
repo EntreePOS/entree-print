@@ -458,10 +458,12 @@ public sealed class V2EndpointTests
         private WebApplication _app = null!;
         private PrinterExecutionQueue _queue = null!;
         private PluginSettings _settings = null!;
+        private int _eventCapacity = DurableEventLog.MaximumEvents;
 
-        public static async Task<Harness> Start(PluginSettings? configuration = null)
+        public static async Task<Harness> Start(PluginSettings? configuration = null, int eventCapacity = DurableEventLog.MaximumEvents)
         {
             var host = new Harness();
+            host._eventCapacity = eventCapacity;
             host._settings = (configuration ?? new PluginSettings { AccessToken = new string('t', 32) }) with { SpoolPath = host.DirectoryPath };
             await host.Initialize();
             return host;
@@ -471,7 +473,8 @@ public sealed class V2EndpointTests
         {
             var host = this;
             host.Identity = new ServiceIdentity(host.DirectoryPath);
-            var events = host.Events = new EventBroadcaster(Path.Combine(host.DirectoryPath, "events"));
+            var events = host.Events = new EventBroadcaster(new DurableEventLog(Path.Combine(host.DirectoryPath, "events"),
+                host._eventCapacity, DurableEventLog.MaximumBytes), host._settings);
             host.Jobs = new JobStore(events, Path.Combine(host.DirectoryPath, "jobs"), host.Clock, host._settings.ReceiptRetentionDays);
             var settings = _settings;
             var renders = new PreparedReceiptStore(Path.Combine(host.DirectoryPath, "renders"), host.Identity, host.Clock);
@@ -486,6 +489,8 @@ public sealed class V2EndpointTests
             builder.Logging.AddConsole().SetMinimumLevel(LogLevel.Warning);
             builder.Logging.AddProvider(new ErrorCapture(host.Errors));
             builder.Services.AddSingleton(host.Identity);
+            builder.Services.AddSingleton(events);
+            builder.Services.AddSingleton(host.Jobs);
             builder.Services.AddPrintCors(settings);
             builder.Services.AddSingleton(new V2ApiService(settings, host.Identity, host.Inventory, renders, host.Jobs, processor, host.Driver));
             host._app = builder.Build();

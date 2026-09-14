@@ -4,7 +4,7 @@ Status: target contract for the first 0.0.1 release, reviewed against the curren
 
 Latest correction: Windows printer drivers own paper, printable area, resolution and driver-supported cutter behavior. Do not ask customers to duplicate them in plugin profiles. The newly added profile editor was removed. Preview preparation reads the driver's current printable area/DPI, and printing preserves its page settings. `setWidth()` is optional content narrowing within that area, not paper configuration. Receipt pagination and driver-specific feeding/cutting still require physical validation. References below to printer settings mean measured driver settings; optional device-command configuration is separate and not required for ordinary receipt printing.
 
-Working-tree update: the core HTTP contract and fluent SDK are implemented and tested, including real Chromium preview preparation, paged filtered history, explicit linked reprints and controlled SDK transport/heartbeat tests. See [implementation status](API_V2_IMPLEMENTATION.md) and [SDK usage](sdk/README.md) for exact scope. Job/printer events and ordered actions remain unfinished. The installed service remains unchanged; this document includes requirements not yet implemented.
+Working-tree update: the core HTTP contract and fluent SDK are implemented and tested, including real Chromium preview preparation, paged filtered history, explicit linked reprints and controlled SDK transport/heartbeat tests. See [implementation status](API_V2_IMPLEMENTATION.md) and [SDK usage](sdk/README.md) for exact scope. Job/printer events are implemented; ordered actions remain unfinished. The installed service remains unchanged; this document includes requirements not yet implemented.
 
 The [service README](EntreePrintPlugin/README.md) documents the current API. The [comparison demo](samples/PrintComparison/README.md) documents the rendering experiments. Client-specific source reviews are maintained separately from this standalone product contract.
 
@@ -573,8 +573,8 @@ Use synthetic fixtures for development and verification. Clients must send only 
 
 | Area | Current implementation | This proposal |
 | --- | --- | --- |
-| Main SDK | Fluent config/connect/search/target/render/print, history and reprints | Durable events, ordered actions and POS integration |
-| Main jobs | Durable file-backed jobs, captured Windows attempts, completion monitoring, configurable artifact expiry and retained deduplication records | Durable events, long-term history export and physical fault pilot |
+| Main SDK | Fluent config/connect/search/target/render/print, history and reprints | Ordered actions and POS integration |
+| Main jobs | Durable file-backed jobs, captured Windows attempts, completion monitoring, configurable artifact expiry and retained deduplication records | Long-term history export and physical fault pilot |
 | D demo | Port 19779: session, prepare, SVG preview, A/D print; in-memory IDs | Integrated `render()` returning HTML and retained job artifacts |
 | Rendering | D handles a restricted HTML subset | Real POS fixture coverage before broad rollout |
 | Reprints | Retained accepted artifact, new intent, linked job and active-original guard | Operator uncertainty flow in POS and physical pilot |

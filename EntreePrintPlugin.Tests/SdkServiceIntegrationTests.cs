@@ -16,6 +16,7 @@ public sealed class SdkServiceIntegrationTests
     [InlineData("key-lookup", 1)]
     [InlineData("outbox", 1)]
     [InlineData("sqlite-outbox", 1)]
+    [InlineData("events", 0)]
     public async Task ActualSdk_UsesServicePipelineAndDurableLedger(string scenario, int expectedDeliveries)
     {
         await using var host = await V2EndpointTests.Harness.Start(new PluginSettings
@@ -61,12 +62,17 @@ public sealed class SdkServiceIntegrationTests
                     foreach (var header in input.GetProperty("headers").EnumerateObject())
                         if (!request.Headers.TryAddWithoutValidation(header.Name, header.Value.GetString()))
                             request.Content!.Headers.TryAddWithoutValidation(header.Name, header.Value.GetString());
-                    using var response = await host.Client.SendAsync(request, deadline.Token);
+                    if (scenario == "events" && url.AbsolutePath == "/api/events" && host.Jobs.Get("event-fixture") is null)
+                        host.Seed("event-fixture", "completed", "{\"orderID\":\"订单42\"}");
+                    using var response = await host.Client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, deadline.Token);
+                    var responseBytes = scenario == "events" && response.IsSuccessStatusCode && url.AbsolutePath == "/api/events"
+                        ? await ReadThroughCheckpoint(response, deadline.Token)
+                        : await response.Content.ReadAsByteArrayAsync(deadline.Token);
                     reply = new
                     {
                         id, status = (int)response.StatusCode,
                         headers = response.Headers.Concat(response.Content.Headers).ToDictionary(pair => pair.Key, pair => string.Join(",", pair.Value)),
-                        bodyBase64 = Convert.ToBase64String(await response.Content.ReadAsByteArrayAsync(deadline.Token))
+                        bodyBase64 = Convert.ToBase64String(responseBytes)
                     };
                 }
                 await node.StandardInput.WriteLineAsync(JsonSerializer.Serialize(reply).AsMemory(), deadline.Token);
@@ -76,7 +82,7 @@ public sealed class SdkServiceIntegrationTests
             var error = await errors;
             Assert.True(node.ExitCode == 0 && finished, $"Node SDK scenario {scenario} failed: {error}");
             Assert.Equal(expectedDeliveries, host.Backend.Calls);
-            Assert.Equal(expectedDeliveries, host.Jobs.List().Count);
+            Assert.Equal(scenario == "events" ? 1 : expectedDeliveries, host.Jobs.List().Count);
             Assert.All(host.Backend.Executed, command =>
             {
                 Assert.NotNull(command.Prepared);
@@ -88,6 +94,24 @@ public sealed class SdkServiceIntegrationTests
         {
             if (!node.HasExited) { node.Kill(entireProcessTree: true); await node.WaitForExitAsync(); }
         }
+    }
+
+    // Forward the actual SSE bytes through the existing stdio bridge, ending
+    // after catch-up to exercise SDK resume on EOF. No socket listener is used.
+    private static async Task<byte[]> ReadThroughCheckpoint(HttpResponseMessage response, CancellationToken token)
+    {
+        await using var stream = await response.Content.ReadAsStreamAsync(token);
+        using var bytes = new MemoryStream();
+        var buffer = new byte[4096];
+        while (bytes.Length < 2_000_000)
+        {
+            var count = await stream.ReadAsync(buffer, token);
+            if (count == 0) throw new IOException("Event stream ended before its checkpoint.");
+            bytes.Write(buffer, 0, count);
+            var text = Encoding.UTF8.GetString(bytes.GetBuffer(), 0, checked((int)bytes.Length));
+            if (text.Contains("event: caught-up") && (text.EndsWith("\n\n") || text.EndsWith("\r\n\r\n"))) return bytes.ToArray();
+        }
+        throw new IOException("Event fixture exceeded its bounded response.");
     }
 
     private static async Task<object> Control(V2EndpointTests.Harness host, JsonElement input, int id, string command, CancellationToken token)
@@ -116,6 +140,9 @@ public sealed class SdkServiceIntegrationTests
             case "expireReceipts":
                 host.Clock.Now += TimeSpan.FromDays(8);
                 return new { id, expired = host.Jobs.ExpireArtifacts() };
+            case "updateEventFixture":
+                host.Jobs.UpdateStatus(host.Jobs.Get("event-fixture")!, "completed", "Recovered observation");
+                return new { id, cursor = EventStream.Cursor(host.Identity.ServiceId, host.Events.History!.LatestCursor) };
             case "saveClientIntent":
                 using (var file = new FileStream(Path.Combine(host.DirectoryPath, "client-intent.json"), FileMode.CreateNew, FileAccess.Write, FileShare.None))
                 {

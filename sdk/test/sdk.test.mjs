@@ -380,7 +380,7 @@ test('disconnect aborts an ignored transport, prevents late connection commit an
 
 test('heartbeat does not overlap; missed replies degrade then offline and never submit printer commands', async t => {
   const { api, state, clock, calls } = harness(t, { heartbeat: { intervalMs: 100, timeoutMs: 20, missedLimit: 3 } });
-  const states = []; api.subscribe(event => states.push(event.data.state));
+  const states = []; api.subscribe(event => states.push(event.data.state), { events:['connection'] });
   await api.connect(); state.heartbeat = () => new Promise(() => {});
   await clock.advance(100); const count = calls.length;
   const p1 = api.resume(); const p2 = api.resume(); await flush();
@@ -432,7 +432,7 @@ test('repeated identical configurations share the handshake and one heartbeat ti
 test('verified aliases share monitoring while an old ticket retains its render and print intent', async t => {
   const { api, state, clock, calls, jobs } = harness(t, { heartbeat: { intervalMs: 100 } });
   state.identity = 'same-server';
-  const events = []; api.subscribe(event => events.push(event.data));
+  const events = []; api.subscribe(event => events.push(event.data), { events:['connection'] });
   const ticket = api.target('Kitchen').setContent('<p>Saved receipt</p>');
   const preview = await ticket.render();
   await api.connect({ ip: 'new-address', renderTimeoutMs: 20000, serviceId: 'same-server' });
@@ -455,7 +455,7 @@ test('shared monitoring has one in-flight heartbeat and one missed-count transit
   const { api, state, clock, calls } = harness(t, { heartbeat: { intervalMs: 100, timeoutMs: 20, missedLimit: 1 } });
   state.identity = 'same-server';
   await api.connect(); await api.connect({ ip: 'alias' });
-  const events = []; api.subscribe(event => events.push(event.data));
+  const events = []; api.subscribe(event => events.push(event.data), { events:['connection'] });
   state.heartbeat = () => new Promise(() => {});
   const first = api.resume(), second = api.resume(); await flush();
   assert.equal(calls.filter(call => call.url.pathname === '/api/heartbeat').length, 1);

@@ -58,22 +58,28 @@ public sealed class V2ApiService(PluginSettings settings, ServiceIdentity identi
     internal static string LayoutVersion(PrinterStatusRecord printer, PrinterLayoutSettings layout) => Convert.ToHexString(SHA256.HashData(
         JsonSerializer.SerializeToUtf8Bytes(new { printer.Name, printer.DriverName, layout }))).ToLowerInvariant();
 
-    private object PrinterView(PrinterStatusRecord printer)
+    private object PrinterView(PrinterStatusRecord printer) => PrinterView(settings, printer);
+    internal object[] CachedInventory() => printers.GetCachedPrinters().Select(PrinterView).ToArray();
+
+    internal static object PrinterView(PluginSettings settings, PrinterStatusRecord printer)
     {
         return new
         {
-            printer.Name, isDefault = printer.Default,
+            name = printer.Name, isDefault = printer.Default,
             connection = new { type = printer.PortName.StartsWith("USB", StringComparison.OrdinalIgnoreCase) ? "usb" : !string.IsNullOrEmpty(printer.HostAddress) ? "network" : "unknown", host = printer.HostAddress },
             settings = new { source = "windows_driver" },
-            status = StatusView(printer)
+            status = StatusView(settings, printer)
         };
     }
 
-    private object StatusView(PrinterStatusRecord printer)
+    private object StatusView(PrinterStatusRecord printer) => StatusView(settings, printer);
+
+    private static object StatusView(PluginSettings settings, PrinterStatusRecord printer)
     {
-        var profile = Profile(printer.Name);
-        return new { state = printer.Stale ? "unknown" : printer.Status, printer.Stale, observedAt = printer.UpdatedAt,
-                source = printer.StatusSource, printer.Offline, printer.PaperOut, printer.PaperLow, printer.CoverOpen, printer.Paused,
+        var profile = settings.PrinterProfiles.FirstOrDefault(pair => pair.Key.Equals(printer.Name, StringComparison.OrdinalIgnoreCase)).Value;
+        return new { state = printer.Stale ? "unknown" : printer.Status, stale = printer.Stale, observedAt = printer.UpdatedAt,
+                source = printer.StatusSource, offline = printer.Offline, paperOut = printer.PaperOut, paperLow = printer.PaperLow,
+                coverOpen = printer.CoverOpen, paused = printer.Paused,
                 capabilities = new { beep = profile?.BeepCommandHex is not null, openDrawer = profile?.DrawerCommandHex is not null,
                     cut = profile?.CutCommandHex is not null && profile.CutMode != "driver", sendCommand = profile?.AllowRawCommands == true }
         };
@@ -285,6 +291,22 @@ public sealed class V2ApiService(PluginSettings settings, ServiceIdentity identi
         if (jobs.Get(id)!.ArtifactExpiredAt.HasValue)
             throw new CommandException("ARTIFACT_EXPIRED", "The retained receipt layout has expired. Job history and duplicate protection remain available.");
         return PreparedReceiptStore.View(command.Prepared ?? throw new CommandException("RENDER_NOT_AVAILABLE", "This job has no receipt rendering."));
+    }
+
+    internal object EventView(DurablePrintEvent entry)
+    {
+        object data;
+        if (entry.Type == "job")
+        {
+            var job = entry.Data.GetProperty("job").Deserialize<JobRecord>() ?? throw new InvalidDataException("Invalid job event.");
+            string? Field(string key) => entry.Data.GetProperty(key).GetString();
+            var command = new AcceptedCommand(job.Id, job.Type, job.Printer, "", "", "", null,
+                IdempotencyKey: Field("IdempotencyKey"), MetadataJson: Field("MetadataJson"), RequestDigest: Field("RequestDigest"), ReprintOf: Field("ReprintOf"));
+            data = JobView(job, command);
+        }
+        else data = entry.Data;
+        return new { id = EventStream.Cursor(identity.ServiceId, entry.Sequence), identity.ServiceId, entry.Type,
+            entry.EntityId, entry.Version, entry.OccurredAt, data };
     }
 
     private object JobView(JobRecord job, AcceptedCommand? command = null)

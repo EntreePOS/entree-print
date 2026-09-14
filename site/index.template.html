@@ -95,6 +95,10 @@
           <h2 id="status-title">Read status with the right meaning</h2>
           <p>Query the selected queue, retrieve job history, or show the original saved preview. Printer observations come from Windows; unsupported sensors may be unknown.</p>
           <!-- example:status -->
+          <h3>Keep a print monitor up to date</h3>
+          <p>Subscribe to job and printer changes. The SDK resumes missed updates after a disconnect and refreshes current state when older history has expired. Use <code>sync: live</code> to show that the monitor has caught up.</p>
+          <!-- example:events -->
+          <p>The <code>monitor</code> methods represent your application's UI or shared state. A synchronization event replaces the full printer list; job updates carry versions. Monitoring does not resend tickets.</p>
           <dl class="status-meaning">
             <div><dt>Accepted by the plugin</dt><dd>The job is saved durably. An observed offline or paper-out destination can wait while other printers continue.</dd></div>
             <div><dt>Completed by Windows</dt><dd>The spooler reported completion for that job. It is not independent confirmation that paper emerged.</dd></div>
