@@ -22,7 +22,7 @@ public sealed class V2ApiService(PluginSettings settings, ServiceIdentity identi
         var inventory = await InventoryAsync(true, token);
         if (inventory.Length == 0) throw new CommandException("NO_PRINTERS", "This service has no installed Windows printers.");
         return new { identity.ServiceId, identity.BootId, apiVersion = "0.0.1", rendererVersion = ServiceIdentity.Version,
-            ip, port = settings.HttpPort, protocol = settings.Scheme, capabilities = new { render = true, print = true, qrcode = true, barcode = new[] { "code39", "code128" }, images = false },
+            ip, port = settings.HttpPort, protocol = settings.Scheme, capabilities = new { render = true, portableRender = true, print = true, qrcode = true, barcode = new[] { "code39", "code128" }, images = false },
             retention = new { receiptDays = settings.ReceiptRetentionDays, pendingReceiptsExpire = false,
                 idempotency = "retained", maxJobs = JobStore.MaxRetainedJobs, maxPreparedJobs = JobStore.MaxPreparedJobs,
                 acceptanceByteBudget = JobStore.MaxAcceptanceBytes }, printers = inventory };
@@ -56,7 +56,8 @@ public sealed class V2ApiService(PluginSettings settings, ServiceIdentity identi
 
     private PrinterProfile? Profile(string name) => settings.PrinterProfiles.FirstOrDefault(pair => pair.Key.Equals(name, StringComparison.OrdinalIgnoreCase)).Value;
     internal static string LayoutVersion(PrinterStatusRecord printer, PrinterLayoutSettings layout) => Convert.ToHexString(SHA256.HashData(
-        JsonSerializer.SerializeToUtf8Bytes(new { printer.Name, printer.DriverName, layout }))).ToLowerInvariant();
+        JsonSerializer.SerializeToUtf8Bytes(new { printer.Name, printer.DriverName, layout,
+            destination = NetworkPrinterDestination.From(printer)?.Id }))).ToLowerInvariant();
 
     private object PrinterView(PrinterStatusRecord printer) => PrinterView(settings, printer);
     internal object[] CachedInventory() => printers.GetCachedPrinters().Select(PrinterView).ToArray();
@@ -89,7 +90,12 @@ public sealed class V2ApiService(PluginSettings settings, ServiceIdentity identi
     public async Task<object> RenderAsync(V2Request request, CancellationToken token)
     {
         var body = request.Body;
-        V2Request.Fields(body, "printer", "html", "content", "widthMm");
+        V2Request.Fields(body, "printer", "html", "content", "widthMm", "artifact");
+        if (body.TryGetProperty("artifact", out var artifact))
+        {
+            V2Request.Fields(body, "printer", "artifact");
+            return await ImportReceiptAsync(V2Request.String(body, "printer"), PortableReceipt.Read(artifact), token);
+        }
         var printer = await FindPrinterAsync(V2Request.String(body, "printer"), token);
         var layoutSettings = await driverSettings.ReadAsync(printer.Name, token);
         var width = V2Request.Number(body, "widthMm") ?? layoutSettings.PrintableWidthMm;
@@ -106,14 +112,31 @@ public sealed class V2ApiService(PluginSettings settings, ServiceIdentity identi
         {
             var layout = await ReceiptLayoutEngine.PrepareAsync(html, width, work, token, settings.BrowserExecutablePath);
             var comparison = ReceiptComparison.Create(layout, printer.DriverName, layoutSettings, token);
-            return PreparedReceiptStore.View(renders.Save(printer.Name, width, LayoutVersion(printer, layoutSettings), layout,
-                layoutSettings.DpiX == layoutSettings.DpiY ? layoutSettings.DpiX : null, comparison));
+            var receipt = renders.Save(printer.Name, width, LayoutVersion(printer, layoutSettings), layout,
+                layoutSettings.DpiX == layoutSettings.DpiY ? layoutSettings.DpiX : null, comparison);
+            return PreparedReceiptStore.View(receipt, PortableReceipt.Create(receipt, printer));
         }
         finally
         {
             _renderSlots.Release();
             if (Directory.Exists(work)) try { Directory.Delete(work, recursive: true); } catch (IOException) { }
         }
+    }
+
+    private async Task<object> ImportReceiptAsync(string name, PortableReceipt artifact, CancellationToken token)
+    {
+        if (!await _renderSlots.WaitAsync(0, token)) throw new CommandException("RENDER_BUSY", "The renderer is busy; retry preparation shortly.");
+        try
+        {
+            await InventoryAsync(true, token);
+            var printer = await FindPrinterAsync(name, token);
+            var driver = await driverSettings.ReadAsync(printer.Name, token);
+            artifact.Validate(printer, driver, token);
+            var receipt = renders.Save(printer.Name, artifact.WidthMm, LayoutVersion(printer, driver), artifact.Layout,
+                artifact.Dpi, artifact.ComparisonId, artifact.ExpiresAt);
+            return PreparedReceiptStore.View(receipt, PortableReceipt.Create(receipt, printer));
+        }
+        finally { _renderSlots.Release(); }
     }
 
     internal static string BuildBlocks(JsonElement blocks, decimal width, int? dpi)

@@ -16,7 +16,8 @@ public sealed class PreparedReceiptStore
         Directory.CreateDirectory(_directory);
     }
 
-    public PreparedReceipt Save(string printer, decimal widthMm, string profileVersion, ReceiptTextLayout layout, int? dpi = null, string? comparisonId = null)
+    public PreparedReceipt Save(string printer, decimal widthMm, string profileVersion, ReceiptTextLayout layout, int? dpi = null, string? comparisonId = null,
+        DateTimeOffset? expiresAt = null)
     {
         WindowsTextPrinter.Validate(layout);
         if (comparisonId is not null && (comparisonId.Length != 71 || !comparisonId.StartsWith("layout:") ||
@@ -24,6 +25,8 @@ public sealed class PreparedReceiptStore
             throw new ArgumentException("Invalid receipt comparison ID.");
         lock (_gate)
         {
+            var now = _clock.GetUtcNow();
+            if (expiresAt <= now) throw new CommandException("RENDER_EXPIRED", "Preview expired; prepare and review it again before printing.");
             foreach (var expiredPath in Directory.GetFiles(_directory, "*.json")
                 .Where(path => File.GetLastWriteTimeUtc(path) < _clock.GetUtcNow().UtcDateTime.AddMinutes(-30)))
             {
@@ -33,9 +36,9 @@ public sealed class PreparedReceiptStore
             var files = Directory.GetFiles(_directory, "*.json");
             if (files.Length >= 1000 || files.Sum(path => new FileInfo(path).Length) >= 256_000_000)
                 throw new CommandException("RENDER_STORE_FULL", "Prepared receipt storage is full; expire unused previews before preparing more.");
-            var now = _clock.GetUtcNow();
+            var expiry = expiresAt is { } supplied && supplied < now.AddMinutes(30) ? supplied : now.AddMinutes(30);
             var receipt = new PreparedReceipt(Guid.NewGuid().ToString("D"), _identity.ServiceId, printer, widthMm,
-                profileVersion, Hash(printer, widthMm, profileVersion, layout, dpi, comparisonId), layout, now, now.AddMinutes(30), dpi, comparisonId);
+                profileVersion, Hash(printer, widthMm, profileVersion, layout, dpi, comparisonId), layout, now, expiry, dpi, comparisonId);
             var bytes = JsonSerializer.SerializeToUtf8Bytes(receipt);
             if (bytes.Length > 8_000_000) throw new CommandException("RENDER_TOO_LARGE", "Prepared receipt exceeds 8 MB.");
             var path = RecordPath(receipt.Id);
@@ -66,14 +69,14 @@ public sealed class PreparedReceiptStore
     public static string Hash(string printer, decimal widthMm, string profile, ReceiptTextLayout layout, int? dpi = null, string? comparisonId = null) =>
         Convert.ToHexString(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(new { printer, widthMm, profile, layout, dpi, comparisonId }))).ToLowerInvariant();
 
-    public static object View(PreparedReceipt receipt) => new
+    public static object View(PreparedReceipt receipt, PortableReceipt? artifact = null) => new
     {
         receipt.Id, receipt.ServiceId,
         html = "<!doctype html><html><head><meta charset=\"utf-8\"><meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; style-src 'unsafe-inline'\"><style>html,body{margin:0;padding:0}svg{display:block}</style></head><body>"
             + WindowsTextPrinter.ToSvg(receipt.Layout) + "</body></html>",
         receipt.WidthMm, heightMm = (decimal)receipt.Layout.Height * 25.4m / 96m,
         renderer = "positioned-text", rendererVersion = ServiceIdentity.Version,
-        receipt.ProfileVersion, receipt.Dpi, receipt.ComparisonId, settingsSource = "windows_driver", receipt.ExpiresAt,
+        receipt.ProfileVersion, receipt.Dpi, receipt.ComparisonId, settingsSource = "windows_driver", receipt.ExpiresAt, artifact,
         warnings = receipt.ComparisonId is null ? new[] { "This preview cannot be compared automatically with another server." } : Array.Empty<string>()
     };
 
