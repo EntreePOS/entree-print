@@ -151,7 +151,7 @@ Use a modern browser/Electron/Node runtime with Fetch, TextEncoder, AbortControl
 node --test sdk/test/*.test.mjs
 ```
 
-42 tests pass against a fake HTTP boundary, simulated UDP sockets, real SHA-256 and controlled timers. They cover direct/discovered-object connection, concurrent/lazy discovery, first-success connection, failures, cancellation, candidate floods, same-service address recovery, resume refresh, history filters and exact-byte reprint retries. Real LAN discovery, OS sleep/resume, full SDK-to-service and physical printer integration remain pending.
+65 SDK tests pass, including controlled transport/discovery/heartbeat checks, durable outbox recovery cases and a real Chromium IndexedDB/Web Locks test. They cover direct/discovered-object connection, concurrent/lazy discovery, first-success connection, failures, cancellation, candidate floods, same-service address recovery, resume refresh, history filters and exact-byte retry. Six SDK/TestServer scenarios also run in the .NET suite. Real LAN discovery, OS sleep/resume and full installed-service network/physical-printer integration remain pending. The browser storage test requires Node.js 22+ and a local Edge or Chrome installation.
 
 ## Discovery and address recovery
 

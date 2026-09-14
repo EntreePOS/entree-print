@@ -1,5 +1,15 @@
 # Development package verification — 2026-09-13
 
+## September 14: standalone repository and public usage guide
+
+Published [EntreePOS/entree-print](https://github.com/EntreePOS/entree-print) with initial source commit `b53158d4ac3df339a9f6bdfbc02e3ec4633d2c7d`: 185 source, test and documentation files, excluding generated binaries, local configuration, receipt ledgers and client-specific source-review notes. The root README links the standalone guide. This working checkout now tracks the new origin; the original prototype commit remains on `codex/prototype-history` and its remote is named `prototype`. Local working files were preserved.
+
+The [usage site](https://entreepos.github.io/entree-print/) deployed through [GitHub Actions run 34813602033](https://github.com/EntreePOS/entree-print/actions/runs/34813602033). The public page was opened and verified with all headings and images loaded. The guide includes nine generated/copyable snippets, 27 unique IDs with valid anchor targets, setup/tray guidance, receipt preview, codes, job semantics, discovery, retry, outbox and device helpers. The preview SVG is extracted unchanged from the saved synthetic cashier artifact; responsive styling scales the image without changing its drawing.
+
+Desktop light/dark and 320/375 px mobile layouts were visually inspected. A narrow-screen overflow and preview clipping issue was corrected. Topic search, its empty state and copy feedback were exercised. The final 320 px check reports a 305 px page width inside the viewport, with the full receipt visible. The public page also reports no horizontal overflow and all images loaded. Viewport overrides were reset after testing.
+
+A clean archive of the published source passes **277 .NET tests**, plus site snippet/asset verification. Log: `%TEMP%\EntreeStandalonePublishedTests.log`; source location is recorded in `%TEMP%\EntreeStandaloneCheckPath.txt`. Existing SDK/package checks remain 65 and 21 respectively; this turn changed documentation, source publication and site files. No installer or GitHub release asset was published. Installation, protected transport and hardware failure gates remain open.
+
 ## September 14: standalone client outbox and product README
 
 The user clarified that this is a standalone product, with Entree POS as one client, and requested `EntreePOS/entree-print`, a README, usage site, installer and a GitHub release asset once mature. A root README now introduces the product and current API. The existing remote still points to printConnect; the requested destination was not available through the signed-in account's initial `gh repo view`. No repository, site or GitHub release has been created or pushed by this check.

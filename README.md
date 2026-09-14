@@ -126,4 +126,4 @@ Publish into a new directory. Publication builds and verifies the package; it do
 
 ## 0.0.1 release milestone
 
-The standalone release will include source in `EntreePOS/entree-print`, this README, a usage site, and a Windows installer attached to the GitHub release. Release publication follows the deployment and reliability checks; a successful source build alone does not satisfy the milestone.
+The [source repository](https://github.com/EntreePOS/entree-print), this README and the [usage guide](https://entreepos.github.io/entree-print/) are available. A Windows installer will be attached to the GitHub release after deployment and reliability checks pass; a successful source build alone does not satisfy the 0.0.1 milestone.
