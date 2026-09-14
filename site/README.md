@@ -1,6 +1,6 @@
 # Usage guide
 
-The standalone Entree Print documentation is a static site. The guide makes no print-service requests. The playground makes requests only after the developer connects, and uses the real browser SDK for printer inventory and rendering. It never submits jobs. Tokens stay in memory; they are not included in copied code, URLs or storage.
+The standalone Entree Print documentation is a static site. The guide makes no print-service requests. The playground automatically checks the local plugin at `http://127.0.0.1:9779` when opened, then uses the real browser SDK for authorized connection, printer inventory and rendering. It never submits jobs. Tokens stay in memory; they are not included in copied code, URLs or storage.
 
 Edit `index.template.html` and `examples.mjs`, then regenerate and verify:
 
@@ -20,7 +20,7 @@ Manual UI verification must cover desktop/mobile, light/dark themes, topic searc
 
 ## Playground
 
-Open `/playground.html` for editable receipt, kitchen and QR/barcode presets. Content is JSON, never executable JavaScript. The sandboxed browser draft uses an inert HTML subset and a restrictive CSP; code blocks are labeled placeholders until the service generates them. Editing content, printer or width discards the previous service result, including any in-flight result. The service preview and downloaded HTML come from `ticket.render()`.
+Open `/playground.html` for editable receipt, kitchen and QR/barcode presets. Startup tries the local endpoint with a three-second request timeout while keeping the editor usable. Without a token, it checks the public health endpoint; a compatible plugin opens the token form, and an unavailable or blocked plugin leaves the page in Preview mode. A valid token is still required for printer access. Manual connection remains available. Heartbeat loss switches back to the browser preview and disables service rendering until the connection recovers. Content is JSON, never executable JavaScript. The sandboxed browser draft uses an inert HTML subset and a restrictive CSP; code blocks are labeled placeholders until the service generates them. Editing content, printer or width discards the previous service result, including any in-flight result. The service preview and downloaded HTML come from `ticket.render()`.
 
 The playground generates an application example with a separate operator-triggered print function. It does not print, open drawers or send raw commands. Actual browser-to-service rendering needs a reachable compatible service, its token, and permission for the page origin. HTTPS hosting can restrict access to the current HTTP service; the loopback development server is available for local testing. Do not disable browser security to work around network restrictions.
 

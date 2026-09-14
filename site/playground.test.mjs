@@ -32,3 +32,82 @@ test('playground has no print submission or token persistence path', async () =>
   const html = await readFile(new URL('./playground.html', import.meta.url), 'utf8');
   assert.match(html, /id="preview"[^>]*sandbox=""/);
 });
+
+// Exercise the actual page controller with a small DOM fixture. No network or
+// printing is performed; the real-browser check covers HTML presentation.
+async function loadPlayground({ token = '', probe, connect, immediateDeadline = false } = {}) {
+  const elements = new Map();
+  const initial = { host:'127.0.0.1', port:'9779', protocol:'http', width:'auto', preset:'receipt', printer:'cashier', token };
+  const element = id => {
+    if (!elements.has(id)) elements.set(id, { value:initial[id] ?? '', textContent:'', dataset:{}, style:{}, disabled:false,
+      parentElement:{clientWidth:340}, listeners:{}, setAttribute() {},
+      addEventListener(name, handler) { this.listeners[name] = handler; },
+      replaceChildren(...children) { this.value = children[0]?.value ?? ''; }
+    });
+    return elements.get(id);
+  };
+  let connectionEvent;
+  const sdk = { disconnect() {}, connect: connect ?? (() => { throw new Error('Unexpected authenticated connection'); }),
+    subscribe(handler) { connectionEvent = handler; } };
+  const document = { getElementById:element, querySelector:element,
+    createElement() { return { content:{querySelectorAll:() => []}, innerHTML:'' }; } };
+  const dependencies = { EntreePrint:sdk, document, presets, parseContent, apiCode, frameDocument,
+    ResizeObserver:class { observe() {} }, Option:class { constructor(label,value) { this.value = value; } },
+    location:{origin:'http://127.0.0.1:19780'}, addEventListener() {}, fetch:probe,
+    setTimeout:immediateDeadline ? (callback, ms) => { assert.equal(ms,3000); queueMicrotask(callback); return 0; } : setTimeout,
+    clearTimeout:immediateDeadline ? () => {} : clearTimeout };
+  const source = (await readFile(new URL('./playground.mjs', import.meta.url), 'utf8'))
+    .replace(/^import .*;\r?\n/gm, '').replace('void connectToService(true);', 'await connectToService(true);');
+  const AsyncFunction = Object.getPrototypeOf(async function(){}).constructor;
+  await new AsyncFunction(...Object.keys(dependencies), source)(...Object.values(dependencies));
+  return { element, connectionEvent };
+}
+
+test('startup probes localhost and falls back to an editable preview without a plugin', async () => {
+  let probes = 0;
+  const { element } = await loadPlayground({ probe: async (url, options) => {
+    probes++; assert.equal(url,'http://127.0.0.1:9779/api/health'); assert.equal(options.credentials,'omit');
+    throw new TypeError('Connection refused');
+  } });
+  assert.equal(probes,1);
+  assert.equal(element('preview-kind').textContent,'Preview mode');
+  assert.equal(element('connection-badge').textContent,'Preview mode');
+  assert.match(element('preview').srcdoc,/Fried rice/);
+  assert.equal(element('render').disabled,true);
+  assert.equal(element('connection-fields').disabled,false);
+  assert.equal(element('connection-status').dataset.error,'false');
+  element('content').value = JSON.stringify([{type:'html',html:'<p>Edited offline</p>'}]);
+  element('content').listeners.input();
+  assert.match(element('preview').srcdoc,/Edited offline/);
+});
+
+test('an unresponsive local plugin times out into preview mode', async () => {
+  const { element } = await loadPlayground({ immediateDeadline:true, probe: (url,{signal}) =>
+    new Promise((resolve,reject) => signal.addEventListener('abort', () => reject(new Error('Timeout')))) });
+  assert.equal(element('connection-badge').textContent,'Preview mode');
+  assert.equal(element('connection-fields').disabled,false);
+});
+
+test('a local plugin requiring authorization keeps preview available and shows token setup', async () => {
+  const { element } = await loadPlayground({ probe: async () => ({ok:true,json:async () => ({service:'entree-print-plugin',apiVersion:'0.0.1'})}) });
+  assert.equal(element('.connection-panel').open,true);
+  assert.match(element('connection-status').textContent,/Local plugin found.*access token/);
+  assert.equal(element('preview-kind').textContent,'Preview mode');
+});
+
+test('authorized startup obtains printers from the library and heartbeat loss restores preview mode', async () => {
+  const calls = [];
+  const { element, connectionEvent } = await loadPlayground({ token:'a'.repeat(32), connect:async config => {
+    calls.push('connect'); assert.equal(config.ip,'127.0.0.1'); assert.equal(config.port,9779); assert.equal(config.requestTimeoutMs,3000);
+    return {getPrinters:async () => { calls.push('printers'); return [{name:'cashier'}]; }};
+  } });
+  assert.deepEqual(calls,['connect','printers']);
+  assert.equal(element('connection-badge').textContent,'Connected');
+  assert.equal(element('render').disabled,false);
+  connectionEvent({type:'connection',data:{state:'offline'}});
+  assert.equal(element('preview-kind').textContent,'Preview mode');
+  assert.equal(element('render').disabled,true);
+  connectionEvent({type:'connection',data:{state:'online'}});
+  assert.equal(element('preview-kind').textContent,'Browser draft');
+  assert.equal(element('render').disabled,false);
+});

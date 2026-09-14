@@ -18,9 +18,9 @@
     <nav aria-label="Primary navigation"><a href="index.html">Guide</a><a href="playground.html" aria-current="page">Playground</a><a class="github" href="https://github.com/EntreePOS/entree-print">GitHub</a><button class="theme" type="button" aria-label="Switch to dark theme">Dark</button></nav>
   </header>
   <main id="playground" class="playground">
-    <div class="playground-intro"><p class="eyebrow">Developer playground · 0.0.1-beta</p><h1>Build a receipt. See the result.</h1><p>Edit an example and copy the API code. Connect to your print service to see the actual Windows layout. Previewing uses no paper.</p></div>
+    <div class="playground-intro"><p class="eyebrow">Developer playground · 0.0.1-beta</p><h1>Build a receipt. See the result.</h1><p>Automatically connects to your local plugin when authorized. If it is unavailable, keep editing in preview mode. Previewing uses no paper.</p></div>
     <details class="connection-panel">
-      <summary>Connect to a print service <span id="connection-badge">Optional</span></summary>
+      <summary>Print service connection <span id="connection-badge">Checking local plugin…</span></summary>
       <form id="connection-form">
         <fieldset id="connection-fields" class="connection-fields">
           <label>Protocol<select id="protocol"><option value="http">HTTP</option><option value="https">HTTPS</option></select></label>
@@ -33,7 +33,7 @@
       </form>
       <p class="hint">Use the service computer's address. Add this page's origin, <code id="page-origin"></code>, to the websites permitted in Entree Print settings. The token stays in memory and is sent only to the selected service.</p>
       <p class="hint">Browser access depends on your network and HTTPS setup. If this hosted page cannot reach an HTTP service, run the playground locally with <code>node site/serve.mjs</code>. Automatic server search is available in Node/Electron.</p>
-      <p id="connection-status" class="feedback" role="status">Not connected. Browser drafts work without a service.</p>
+      <p id="connection-status" class="feedback" role="status">Checking 127.0.0.1:9779. Preview mode works without a plugin.</p>
     </details>
     <div class="workbench">
       <section class="editor-panel" aria-labelledby="editor-title">
@@ -50,7 +50,7 @@
         <div class="actions"><button id="render" class="button primary" type="button" disabled>Render with service</button><button id="reset" class="button" type="button">Reset example</button></div>
       </section>
       <section class="preview-panel" aria-labelledby="preview-title">
-        <div class="panel-heading"><h2 id="preview-title">Preview</h2><span class="preview-kind" id="preview-kind">Browser draft</span></div>
+        <div class="panel-heading"><h2 id="preview-title">Preview</h2><span class="preview-kind" id="preview-kind">Preview mode</span></div>
         <p id="preview-note" class="hint">Approximate HTML layout at 72 mm. Connect for the driver's exact layout and scannable codes.</p>
         <div class="preview-mat"><iframe id="preview" title="Receipt preview" sandbox="" referrerpolicy="no-referrer"></iframe></div>
         <p id="render-status" class="feedback" role="status">Edit the content to update the browser draft.</p>
