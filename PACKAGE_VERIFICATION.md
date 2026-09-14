@@ -1,5 +1,13 @@
 # Development package verification — 2026-09-13
 
+## September 14: receipt preflight and SQLite commit recovery candidate
+
+[Run 34842784394](https://github.com/EntreePOS/entree-print/actions/runs/34842784394) passed from `c228f8ea26671b7d542aebc6e3ba57635798f93f`. Downloaded TRX confirms **439 .NET tests passed**, with no failures or skips. The native Microsoft Print to PDF preflight passed separately and within that suite (5100 dots, 600 DPI, no StartDoc). Workflow logs confirm **121 core SDK and eleven SQLite tests**. All **64 hosted installer checkpoints** passed over 739 installed entries. Five native logs confirm successful installation, update, uninstall, reinstall and final uninstall without reboot. The [exact result](installer/evidence/windows-ci-34842784394.json) retains source, checks and digest.
+
+The unsigned EXE is **80,864,429 bytes**, SHA-256 `b6827248305f6bdcdfe0acd7691e77fe5d51f10d4c46590beae0626d731fff05`. Build metadata records package manifest SHA-256 `aea6280db5b2622a43577c27385ca2f7b5f6a916962c01a5cff1f01e7b5f3164`. Downloaded bytes match metadata, SHA256SUMS and lifecycle evidence. [Artifact 10346643848](https://github.com/EntreePOS/entree-print/actions/runs/34842784394/artifacts/10346643848) retains this candidate for 14 days; local files are under `%TEMP%\EntreeInstallerCI-34842784394`.
+
+This packages receipt comparison revalidation before Windows submission, explicit SDK review after definitive preview rejection, and SQLite busy-commit retries without repeating record updates. It supersedes the two failed attempts recorded in BETA_RELEASE_CHECKLIST.md. Hosted lifecycle checks keep printing inactive; installed service/certificate access, interactive tray/logon, automatic backup routing and live printer/network recovery remain unverified. No GitHub Release was published.
+
 ## September 14: prepared receipt comparison candidate
 
 [Run 34838741586](https://github.com/EntreePOS/entree-print/actions/runs/34838741586) passed from `d021c374d627be2309fc4faf48b294fd106ba5cc`. Downloaded TRX confirms **431 .NET tests passed**, with zero failures or skips. Workflow logs confirm **115 core SDK and nine native SQLite tests**. All **64 hosted installer lifecycle checkpoints** passed over 739 installed entries; five native logs confirm successful installation/update/uninstall/reinstall/final uninstall without reboot. The [exact result](installer/evidence/windows-ci-34838741586.json) records source, checks and digest.

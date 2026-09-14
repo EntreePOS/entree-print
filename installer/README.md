@@ -4,7 +4,7 @@ The installer is a development artifact, not a published release. It wraps a ver
 
 ## Build
 
-The latest verified candidate is [run 34838741586](https://github.com/EntreePOS/entree-print/actions/runs/34838741586), source `d021c374d627be2309fc4faf48b294fd106ba5cc`, including prepared receipt comparison. All 431 application tests, 115 core SDK tests, nine SQLite tests and 64 hosted installer checkpoints pass. [Exact evidence](evidence/windows-ci-34838741586.json) and PACKAGE_VERIFICATION.md identify the downloaded, hash-verified EXE. Printing is inactive during hosted installation tests; live service, printer/network and tray/logon verification remain open.
+The latest verified candidate is [run 34842784394](https://github.com/EntreePOS/entree-print/actions/runs/34842784394), source `c228f8ea26671b7d542aebc6e3ba57635798f93f`, including receipt preflight and SQLite commit recovery. All 439 application tests, 121 core SDK tests, eleven SQLite tests and 64 hosted installer checkpoints pass. [Exact evidence](evidence/windows-ci-34842784394.json) and PACKAGE_VERIFICATION.md identify the downloaded, hash-verified EXE. Printing is inactive during hosted installation tests; live service, printer/network and tray/logon verification remain open.
 
 Use the pinned .NET SDK and [Inno Setup 7.1.0](https://jrsoftware.org/isdl.php). The Inno Setup installer used for the initial build had a valid Pyrsys B.V. Authenticode signature and SHA-256 `0362a383ed217d4c4239b5933866dd96d3eb2102737da92f80f6057a4b40df2f`. Its bundled license permits commercial use; the authors request commercial users purchase a license to support development. No license purchase or code-signing credential is supplied by this repository.
 
